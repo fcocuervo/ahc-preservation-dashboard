@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AHC Preservation — Weekly Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F5F5F5;color:#1A1A2E;min-height:100vh}
+.topbar{background:#1A1A2E;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+.topbar-title{color:#fff;font-size:15px;font-weight:500}
+.topbar-sub{color:rgba(255,255,255,.5);font-size:12px;margin-top:2px}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.topbar-date{color:rgba(255,255,255,.6);font-size:12px}
+.btn-refresh{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px}
+.btn-refresh:hover{background:rgba(255,255,255,.2)}
+.container{max-width:1200px;margin:0 auto;padding:20px 24px}
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}
+.metric{background:#fff;border-radius:10px;padding:14px 16px;border:0.5px solid #E5E5E5}
+.metric-label{font-size:11px;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.metric-value{font-size:26px;font-weight:500}
+.metric-sub{font-size:11px;color:#888;margin-top:4px}
+.ok{color:#1D9E75}.warn{color:#BA7517}.danger{color:#A32D2D}.info{color:#378ADD}
+.panel{background:#fff;border-radius:10px;border:0.5px solid #E5E5E5;padding:16px 20px;margin-bottom:16px}
+.panel-title{font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.sup-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.sup-card{border:0.5px solid #E5E5E5;border-radius:8px;padding:10px 12px}
+.sup-name{font-size:12px;font-weight:500;margin-bottom:5px}
+.badge{display:inline-block;padding:3px 8px;border-radius:5px;font-size:10px;font-weight:600}
+.b-ok{background:#EAF3DE;color:#27500A}
+.b-no{background:#FCEBEB;color:#791F1F}
+.b-na{background:#F0F0F0;color:#666}
+.b-rot{background:#E3F2FD;color:#185FA5}
+.b-warn{background:#FAEEDA;color:#633806}
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{text-align:left;padding:6px 8px;color:#888;font-weight:500;border-bottom:1px solid #F0F0F0;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.tbl td{padding:8px 8px;border-bottom:0.5px solid #F5F5F5;color:#1A1A2E;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:#FAFAFA}
+.rot-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid #F0F0F0}
+.rot-row:last-child{border-bottom:none}
+.rot-name{font-size:13px;font-weight:500}
+.rot-date{font-size:11px;color:#888;margin-top:1px}
+.analyst-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid #F0F0F0}
+.analyst-row:last-child{border-bottom:none}
+.analyst-week{font-size:13px;font-weight:500}
+.analyst-range{font-size:11px;color:#888}
+.week-bars{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:4px}
+.day-col{text-align:center}
+.day-label{font-size:11px;color:#888;margin-bottom:4px}
+.day-bar-wrap{height:56px;display:flex;align-items:flex-end;justify-content:center}
+.day-bar{border-radius:4px 4px 0 0;min-height:3px;width:28px}
+.day-count{font-size:11px;color:#888;margin-top:4px}
+.day-today .day-label{color:#E94560;font-weight:700}
+.empty{font-size:12px;color:#999;padding:8px 0;text-align:center}
+.loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(245,245,245,.85);display:flex;align-items:center;justify-content:center;z-index:100;flex-direction:column;gap:12px}
+.spinner{width:32px;height:32px;border:3px solid #E5E5E5;border-top-color:#E94560;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:#888}
+.accent{color:#E94560}
+.footer{text-align:center;padding:20px;font-size:11px;color:#aaa}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="topbar-title">🏭 AHC Preservation Management</div>
+    <div class="topbar-sub">Weekly Dashboard · Technip Energies · Egypt</div>
+  </div>
+  <div class="topbar-right">
+    <span class="topbar-date" id="dash-date">—</span>
+    <button class="btn-refresh" onclick="load()">↻ Refresh</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Reports today</div><div class="metric-value" id="m1">—</div><div class="metric-sub">of 4 supervisors</div></div>
+    <div class="metric"><div class="metric-label">Pending today</div><div class="metric-value" id="m2">—</div><div class="metric-sub" id="m2-sub">—</div></div>
+    <div class="metric"><div class="metric-label">Active issues</div><div class="metric-value" id="m3">—</div><div class="metric-sub">last 7 days</div></div>
+    <div class="metric"><div class="metric-label">In rotation</div><div class="metric-value" id="m4">—</div><div class="metric-sub">this week</div></div>
+    <div class="metric"><div class="metric-label">EasyPlant tags</div><div class="metric-value info" id="m5">—</div><div class="metric-sub">latest Lojina</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Supervisor status — today</div>
+    <div class="sup-grid" id="sup-grid">
+      <div class="sup-card"><div class="sup-name">M. Abdelhamid</div><span class="badge b-warn">Loading</span></div>
+      <div class="sup-card"><div class="sup-name">F. Emad</div><span class="badge b-warn">Loading</span></div>
+      <div class="sup-card"><div class="sup-name">P. Badr</div><span class="badge b-warn">Loading</span></div>
+      <div class="sup-card"><div class="sup-name">H. Khalil</div><span class="badge b-warn">Loading</span></div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">Weekly compliance — this week</div>
+      <table class="tbl">
+        <thead><tr><th>Member</th><th>Report</th><th>EasyPlant</th><th>Inspection</th><th>WhatsApp</th></tr></thead>
+        <tbody id="compliance-body"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Upcoming rotation — next 14 days</div>
+      <div id="rotation-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">Issues & findings — last 7 days</div>
+      <table class="tbl">
+        <thead><tr><th>Supervisor</th><th>Area</th><th>Finding</th><th>Date</th></tr></thead>
+        <tbody id="issues-body"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Data analyst — recent weeks (Lojina)</div>
+      <div id="analyst-list"><div class="empty">Loading...</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Weekly activity — supervisor reports submitted</div>
+    <div class="week-bars" id="week-bars"></div>
+  </div>
+
+</div>
+
+<div class="footer">AHC Preservation Management · Technip Energies · 2026 · <span class="accent">Powered by Notion + Claude</span></div>
+
+<div class="loading-overlay" id="overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Connecting to Notion...</div>
+</div>
+
+<script>
+const SUPS=['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
+const DAYS=['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
+const MSGS=['Connecting to Notion...','Loading supervisor reports...','Loading performance data...','Building dashboard...'];
+let msgIdx=0,msgInt;
+
+function toStr(d){return d.toISOString().split('T')[0]}
+function getWeekDates(){
+  const t=new Date(),dow=t.getDay();
+  const sat=new Date(t);sat.setDate(t.getDate()-((dow+1)%7));
+  return Array.from({length:7},(_,i)=>{const d=new Date(sat);d.setDate(sat.getDate()+i);return d;});
+}
+
+function badge(v){
+  if(v==='Y'||v===true)return'<span class="badge b-ok">Y</span>';
+  if(v==='N'||v===false)return'<span class="badge b-no">N</span>';
+  if(v==='Rotation')return'<span class="badge b-rot">Rotation</span>';
+  return'<span class="badge b-na">N/A</span>';
+}
+
+async function load(){
+  document.getElementById('overlay').style.display='flex';
+  msgIdx=0;
+  msgInt=setInterval(()=>{
+    document.getElementById('loading-text').textContent=MSGS[Math.min(msgIdx++,MSGS.length-1)];
+  },800);
+
+  const today=new Date(),todayStr=toStr(today);
+  document.getElementById('dash-date').textContent=today.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const weekDates=getWeekDates(),weekStart=toStr(weekDates[0]);
+  const sevenAgo=toStr(new Date(today.getTime()-7*24*60*60*1000));
+  const nextTwo=toStr(new Date(today.getTime()+14*24*60*60*1000));
+
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',max_tokens:2000,
+        system:`You are a data extraction assistant. Query Notion databases and return ONLY a valid JSON object. No prose, no markdown fences.
+Return exactly this structure:
+{
+  "todayReports":[{"supervisor":"name","area":"area","issues":true/false,"finding":"text or null"}],
+  "weeklySupCount":{"Sat":0,"Sun":0,"Mon":0,"Tue":0,"Wed":0,"Thu":0,"Fri":0},
+  "recentIssues":[{"supervisor":"name","area":"area","finding":"text","date":"YYYY-MM-DD"}],
+  "complianceWeek":[{"member":"name","reportY":0,"easyPlantY":0,"inspectionY":0,"whatsappY":0}],
+  "rotationEvents":[{"person":"name","date":"YYYY-MM-DD","type":"Rotation Out or Rotation In"}],
+  "analystReports":[{"report":"title","dateRange":"range","easyPlantTags":0,"momDone":true/false}],
+  "inRotationCount":0
+}`,
+        messages:[{role:'user',content:`Query these Notion databases:
+1. Supervisor Daily Reports: collection://061005bd-832e-42d0-86d0-5c800ba010cf
+2. Performance Tracking: collection://d36b9f0a-9b32-47f3-a30c-ec402f6790c2
+3. Team Rotation Calendar: collection://e5a0d06c-f8ca-4040-8734-cb1ab137f014
+4. Data Analyst Weekly Reports: collection://bf507d4a-6455-43ab-906b-074214a464ae
+
+Today: ${todayStr}. Week: ${weekStart} to ${todayStr}. Issues window: ${sevenAgo}. Rotation window: ${todayStr} to ${nextTwo}.
+
+Extract:
+1. todayReports: supervisor entries with Date = ${todayStr}
+2. weeklySupCount: report count per day name this week
+3. recentIssues: entries with Issues Found=true last 7 days max 5
+4. complianceWeek: from Performance Tracking, per team member this week, sum Y counts per activity
+5. rotationEvents: from Team Rotation Calendar next 14 days max 8 sorted by date
+6. analystReports: last 3 analyst entries newest first
+7. inRotationCount: members with Presence Status=Rotation this week
+
+Return ONLY the JSON object.`}],
+        mcp_servers:[{type:'url',url:'https://mcp.notion.com/mcp',name:'notion'}]
+      })
+    });
+    const data=await r.json();
+    const tb=data.content.find(b=>b.type==='text');
+    if(!tb)throw new Error('no response');
+    let j;
+    try{j=JSON.parse(tb.text.replace(/```json|```/g,'').trim());}
+    catch(e){const m=tb.text.match(/\{[\s\S]*\}/);if(m)j=JSON.parse(m[0]);else throw e;}
+    render(j,todayStr,weekDates);
+  }catch(e){renderErr();}
+  finally{clearInterval(msgInt);document.getElementById('overlay').style.display='none';}
+}
+
+function render(j,todayStr,weekDates){
+  const reported=(j.todayReports||[]).map(r=>r.supervisor);
+  const pending=SUPS.filter(s=>!reported.includes(s));
+
+  const m1=document.getElementById('m1');
+  m1.textContent=reported.length;
+  m1.className='metric-value '+(reported.length===4?'ok':reported.length>=2?'warn':'danger');
+
+  const m2=document.getElementById('m2');
+  m2.textContent=pending.length;
+  m2.className='metric-value '+(pending.length===0?'ok':pending.length<=2?'warn':'danger');
+  document.getElementById('m2-sub').textContent=pending.length===0?'All submitted':pending.map(s=>s.split('.')[1]?.trim()||s).join(', ');
+
+  const issues=(j.recentIssues||[]).length;
+  const m3=document.getElementById('m3');
+  m3.textContent=issues;
+  m3.className='metric-value '+(issues===0?'ok':issues<=2?'warn':'danger');
+
+  document.getElementById('m4').textContent=j.inRotationCount??'—';
+  document.getElementById('m5').textContent=j.analystReports?.[0]?.easyPlantTags??'—';
+
+  document.getElementById('sup-grid').innerHTML=SUPS.map(s=>{
+    const rep=(j.todayReports||[]).find(r=>r.supervisor===s);
+    const hi=rep?.issues;
+    return`<div class="sup-card"><div class="sup-name">${s}</div>${rep?`<span class="badge ${hi?'b-no':'b-ok'}">${hi?'⚠ Issues':'Submitted'}</span>`:'<span class="badge b-warn">Pending</span>'}</div>`;
+  }).join('');
+
+  const cb=document.getElementById('compliance-body');
+  cb.innerHTML=(j.complianceWeek||[]).length===0
+    ?'<tr><td colspan="5" class="empty">No compliance data logged this week</td></tr>'
+    :(j.complianceWeek||[]).map(m=>`<tr>
+      <td style="font-weight:500">${m.member}</td>
+      <td>${badge(m.reportY>0?'Y':'N')}</td>
+      <td>${badge(m.easyPlantY>0?'Y':'N')}</td>
+      <td>${badge(m.inspectionY>0?'Y':'N')}</td>
+      <td>${badge(m.whatsappY>0?'Y':'N')}</td>
+    </tr>`).join('');
+
+  const rl=document.getElementById('rotation-list');
+  const re=j.rotationEvents||[];
+  rl.innerHTML=re.length===0
+    ?'<div class="empty">No rotation events in next 14 days</div>'
+    :re.map(e=>`<div class="rot-row">
+      <div><div class="rot-name">${e.person}</div><div class="rot-date">${e.date}</div></div>
+      <span class="badge ${e.type==='Rotation Out'?'b-no':'b-ok'}">${e.type}</span>
+    </div>`).join('');
+
+  const ib=document.getElementById('issues-body');
+  ib.innerHTML=(j.recentIssues||[]).length===0
+    ?'<tr><td colspan="4" class="empty">No issues in last 7 days</td></tr>'
+    :(j.recentIssues||[]).map(i=>`<tr><td>${i.supervisor}</td><td>${i.area}</td><td>${i.finding||'—'}</td><td>${i.date}</td></tr>`).join('');
+
+  const al=document.getElementById('analyst-list');
+  al.innerHTML=(j.analystReports||[]).length===0
+    ?'<div class="empty">No analyst reports found</div>'
+    :(j.analystReports||[]).map(r=>`<div class="analyst-row">
+      <div><div class="analyst-week">${r.report}</div><div class="analyst-range">${r.dateRange||'—'}</div></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:12px;color:#378ADD;font-weight:500">${r.easyPlantTags??'—'} tags</span>
+        ${badge(r.momDone)}
+      </div>
+    </div>`).join('');
+
+  const counts=j.weeklySupCount||{};
+  const maxV=Math.max(...DAYS.map(d=>counts[d]||0),1);
+  const todayDay=DAYS[weekDates.findIndex(d=>toStr(d)===todayStr)]||'';
+  document.getElementById('week-bars').innerHTML=DAYS.map(day=>{
+    const c=counts[day]||0;
+    const h=Math.round((c/maxV)*48)+3;
+    return`<div class="day-col ${day===todayDay?'day-today':''}">
+      <div class="day-label">${day}</div>
+      <div class="day-bar-wrap">${c>0?`<div class="day-bar" style="height:${h}px;background:#1D9E75"></div>`:'<div class="day-bar" style="background:#E5E5E5"></div>'}</div>
+      <div class="day-count">${c||'—'}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderErr(){
+  ['m1','m2','m3','m4','m5'].forEach(id=>document.getElementById(id).textContent='—');
+  document.getElementById('sup-grid').innerHTML=SUPS.map(s=>`<div class="sup-card"><div class="sup-name">${s}</div><span class="badge b-warn">—</span></div>`).join('');
+  document.getElementById('compliance-body').innerHTML='<tr><td colspan="5" class="empty">Could not load data. Check API key or try again.</td></tr>';
+  document.getElementById('rotation-list').innerHTML='<div class="empty">Could not load.</div>';
+  document.getElementById('issues-body').innerHTML='<tr><td colspan="4" class="empty">Could not load.</td></tr>';
+  document.getElementById('analyst-list').innerHTML='<div class="empty">Could not load.</div>';
+}
+
+load();
+</script>
+</body>
+</html>
