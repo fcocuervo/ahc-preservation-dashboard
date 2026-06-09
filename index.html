@@ -129,8 +129,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="footer">AHC Preservation Management · Technip Energies · 2026 · <span class="accent">Powered by Notion</span></div>
 
 <script>
-const TOKEN = ['ntn_558338033169','rDxPPg4KC3edfq3o','vafLdX8OK0q8or32cP'].join('');
-const NOTION_VER = '2022-06-28';
 const DB = {
   supervisors: 'b4d8bf6ea1074dd4844ec6968a848b54',
   analyst: '5c39dca975aa4263b006fde84ea69579',
@@ -154,16 +152,11 @@ function badge(v){
   return'<span class="badge b-na">N/A</span>';
 }
 
-async function queryDB(dbId, filter){
-  const body = filter ? JSON.stringify({filter, page_size:100}) : JSON.stringify({page_size:100});
-  const r = await fetch(`https://api.notion.com/v1/databases/${dbId}/query`,{
+async function queryDB(dbId){
+  const r = await fetch('/api/notion',{
     method:'POST',
-    headers:{
-      'Authorization':'Bearer '+TOKEN,
-      'Notion-Version':NOTION_VER,
-      'Content-Type':'application/json'
-    },
-    body
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({dbId})
   });
   const d = await r.json();
   return d.results || [];
