@@ -1,6 +1,4 @@
-export const config = { runtime: 'nodejs18.x' };
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -8,15 +6,11 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  let body;
-  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
-  catch(e) { return res.status(400).json({ error: 'Invalid JSON' }); }
-
-  const { dbId } = body || {};
+  const { dbId } = req.body || {};
   if (!dbId) return res.status(400).json({ error: 'Missing dbId' });
 
-  const TOKEN = process.env.NOTION_TOKEN;
-  if (!TOKEN) return res.status(500).json({ error: 'Token not configured' });
+  const NOTION_TOKEN = process.env.NOTION_TOKEN;
+  if (!NOTION_TOKEN) return res.status(500).json({ error: 'Token not configured' });
 
   try {
     const response = await fetch(
@@ -24,7 +18,7 @@ export default async function handler(req, res) {
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${TOKEN}`,
+          'Authorization': `Bearer ${NOTION_TOKEN}`,
           'Notion-Version': '2022-06-28',
           'Content-Type': 'application/json'
         },
@@ -36,4 +30,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-}
+};
