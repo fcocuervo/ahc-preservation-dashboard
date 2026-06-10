@@ -124,6 +124,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="panel-title">Weekly activity — supervisor reports submitted</div>
     <div class="week-bars" id="week-bars"></div>
   </div>
+
+  <!-- MC WALKTHROUGH SECTION -->
+  <div class="panel" style="border-left:3px solid #E94560">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="panel-title" style="margin-bottom:0">MC Walkthrough — Preservation Status</div>
+      <div style="display:flex;gap:16px;font-size:11px">
+        <span>Total: <b id="mcwt-total">—</b></span>
+        <span style="color:#1D9E75">Replied: <b id="mcwt-replied">—</b></span>
+        <span style="color:#A32D2D">Pending reply: <b id="mcwt-pending">—</b></span>
+      </div>
+    </div>
+    <table class="tbl">
+      <thead><tr><th>System</th><th>WT Date</th><th>Valves</th><th>Equipment</th><th>Instruments</th><th>Preserved By</th><th>Reviewed By</th><th>Replied</th></tr></thead>
+      <tbody id="mcwt-body"><tr><td colspan="8" class="empty">Loading...</td></tr></tbody>
+    </table>
+  </div>
 </div>
 
 <div class="footer">AHC Preservation Management · Technip Energies · 2026 · <span class="accent">Powered by Notion</span></div>
@@ -133,7 +149,8 @@ const DB = {
   supervisors: 'b4d8bf6ea1074dd4844ec6968a848b54',
   analyst: '5c39dca975aa4263b006fde84ea69579',
   performance: '0a619d24dd914463a040c74a9951bbfa',
-  rotation: 'd0ecab20fbed4c258fcec1624b66a732'
+  rotation: 'd0ecab20fbed4c258fcec1624b66a732',
+  mcwt: '8cf16f1f599a420499837438287b3294'
 };
 const SUPS = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
 const DAYS = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
@@ -187,11 +204,12 @@ async function load(){
   const nextTwo=toStr(new Date(today.getTime()+14*24*60*60*1000));
 
   try{
-    const [supPages, perfPages, rotPages, analystPages] = await Promise.all([
+    const [supPages, perfPages, rotPages, analystPages, mcwtPages] = await Promise.all([
       queryDB(DB.supervisors),
       queryDB(DB.performance),
       queryDB(DB.rotation),
-      queryDB(DB.analyst)
+      queryDB(DB.analyst),
+      queryDB(DB.mcwt)
     ]);
 
     const todayStr0 = todayStr;
@@ -297,6 +315,38 @@ async function load(){
         <div class="day-count">${c||'—'}</div>
       </div>`;
     }).join('');
+
+    // MC WALKTHROUGH
+    const mcwtSorted = [...mcwtPages].sort((a,b)=>{
+      const da=getProp(a,'Walkthrough Date')||''; const db=getProp(b,'Walkthrough Date')||'';
+      return da.localeCompare(db);
+    });
+    const mcwtTotal = mcwtSorted.length;
+    const mcwtReplied = mcwtSorted.filter(p=>getProp(p,'Replied Email to Handover')==='Y').length;
+    const mcwtPending = mcwtTotal - mcwtReplied;
+    document.getElementById('mcwt-total').textContent = mcwtTotal;
+    document.getElementById('mcwt-replied').textContent = mcwtReplied;
+    document.getElementById('mcwt-pending').textContent = mcwtPending;
+
+    const mb = document.getElementById('mcwt-body');
+    mb.innerHTML = mcwtSorted.length===0
+      ? '<tr><td colspan="8" class="empty">No records found</td></tr>'
+      : mcwtSorted.map(p=>{
+          const replied = getProp(p,'Replied Email to Handover');
+          const rowBg = replied==='Y' ? '' : 'background:#FFFBF0';
+          const sys = getProp(p,'System')||'—';
+          const shortSys = sys.length>25 ? sys.substring(11) : sys;
+          return`<tr style="${rowBg}">
+            <td style="font-weight:500;font-size:11px">${shortSys}</td>
+            <td style="font-size:11px">${getProp(p,'Walkthrough Date')||'—'}</td>
+            <td>${badge(getProp(p,'Valves Preserved'))}</td>
+            <td>${badge(getProp(p,'Equipment Preserved'))}</td>
+            <td>${badge(getProp(p,'Instruments Preserved'))}</td>
+            <td style="font-size:11px">${getProp(p,'Preserved By')||'<span style="color:#aaa">—</span>'}</td>
+            <td style="font-size:11px">${getProp(p,'Reviewed By')||'<span style="color:#aaa">—</span>'}</td>
+            <td>${badge(replied)}</td>
+          </tr>`;
+        }).join('');
 
   }catch(e){
     document.getElementById('error-bar').style.display='block';
