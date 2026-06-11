@@ -67,6 +67,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="topbar-right">
     <span class="topbar-date" id="dash-date">—</span>
+    <button class="btn" id="pdf-btn" onclick="downloadPDF()" style="background:rgba(255,255,255,.07)">⬇ Weekly Report</button>
     <button class="btn" id="refresh-btn" onclick="load()">↻ Refresh</button>
   </div>
 </div>
@@ -219,6 +220,36 @@ function getDateEnd(page, name){
   return p.date?.end || p.date?.start || null;
 }
 
+function downloadPDF(){
+  const btn=document.getElementById('pdf-btn');
+  btn.textContent='Generating...'; btn.disabled=true;
+  // Use browser print as PDF — style for print
+  const style=document.createElement('style');
+  style.id='print-style';
+  style.textContent=`
+    @media print {
+      .topbar { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .btn { display: none !important; }
+      #pdf-btn { display: none !important; }
+      body { font-size: 11px; }
+      .metrics { grid-template-columns: repeat(5,1fr); }
+      .two-col { grid-template-columns: 1fr 1fr; }
+      .panel { break-inside: avoid; margin-bottom: 10px; padding: 10px 14px; }
+      .container { padding: 10px 16px; max-width: 100%; }
+      .footer { margin-top: 10px; }
+      @page { size: A4 landscape; margin: 10mm; }
+    }
+  `;
+  document.head.appendChild(style);
+  setTimeout(()=>{
+    window.print();
+    setTimeout(()=>{
+      document.getElementById('print-style')?.remove();
+      btn.textContent='⬇ Weekly Report'; btn.disabled=false;
+    },1000);
+  },300);
+}
+
 async function load(){
   const btn = document.getElementById('refresh-btn');
   btn.disabled=true;
@@ -254,6 +285,7 @@ async function load(){
     }).sort((a,b)=>(getProp(a,'Date')||'').localeCompare(getProp(b,'Date')||''));
     const recentAnalyst = [...analystPages].sort((a,b)=>(getProp(b,'Week Number')||0)-(getProp(a,'Week Number')||0)).slice(0,3);
 
+    const MEMBERS_PRE = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
     const reported = todayReports.map(p=>getProp(p,'Supervisor'));
     const pending = SUPS.filter(s=>!reported.includes(s));
 
@@ -293,7 +325,6 @@ async function load(){
     }).join('');
 
     // === ROTATION AWARENESS: build absence map per person per day ===
-    const MEMBERS_PRE = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
     const MEMBERS = MEMBERS_PRE;
     const ACTS = ['Daily Report Submitted','EasyPlant Validation','Daily Area Inspection','WhatsApp Group Sharing'];
     const ACT_LABELS = ['Report','EasyPlant','Inspection','WhatsApp'];
