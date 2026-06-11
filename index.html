@@ -144,6 +144,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
 </div>
 
+  <!-- MEDALS SECTION -->
+  <div class="panel" id="medals-panel" style="border-left:3px solid #BA7517">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="panel-title" style="margin-bottom:0">Weekly medals — proposed winners</div>
+      <span id="medals-week-label" style="font-size:11px;color:#888"></span>
+    </div>
+    <div id="medals-content"><div class="empty">Loading...</div></div>
+  </div>
+
+  <div class="panel" id="hall-panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="panel-title" style="margin-bottom:0">Hall of medals — confirmed</div>
+      <span style="font-size:11px;color:#888">Season 2026</span>
+    </div>
+    <div id="hall-content"><div class="empty">Loading...</div></div>
+  </div>
+
 <div class="footer">AHC Preservation Management · Technip Energies · 2026 · <span class="accent">Powered by Notion</span></div>
 
 <script>
@@ -152,7 +169,8 @@ const DB = {
   analyst: '5c39dca975aa4263b006fde84ea69579',
   performance: '0a619d24dd914463a040c74a9951bbfa',
   rotation: '673d1a48ee154b80b57ef38570abb1aa',
-  mcwt: '8cf16f1f599a420499837438287b3294'
+  mcwt: '8cf16f1f599a420499837438287b3294',
+  achievements: '66b990e1-5d55-44e7-9f5e-a01b505183df'
 };
 const SUPS = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
 const DAYS = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
@@ -212,12 +230,13 @@ async function load(){
   const nextTwo=toStr(new Date(today.getTime()+14*24*60*60*1000));
 
   try{
-    const [supPages, perfPages, rotPages, analystPages, mcwtPages] = await Promise.all([
+    const [supPages, perfPages, rotPages, analystPages, mcwtPages, achievPages] = await Promise.all([
       queryDB(DB.supervisors),
       queryDB(DB.performance),
       queryDB(DB.rotation),
       queryDB(DB.analyst),
-      queryDB(DB.mcwt)
+      queryDB(DB.mcwt),
+      queryDB(DB.achievements)
     ]);
 
     const todayStr0 = todayStr;
@@ -476,6 +495,125 @@ async function load(){
           </tr>`;
         }).join('');
 
+
+    // === MEDALS SYSTEM ===
+    // Determine last week's window (Sat-Thu)
+    const lastSat = new Date(weekDates[0]); lastSat.setDate(lastSat.getDate()-7);
+    const lastThu = new Date(lastSat); lastThu.setDate(lastSat.getDate()+5);
+    const lastWeekStart = toStr(lastSat);
+    const lastWeekEnd = toStr(lastThu);
+    const isSaturday = today.getDay() === 6;
+    const weekLabel = `Week ${lastWeekStart.substring(0,4)}-W${String(Math.ceil((new Date(lastWeekStart) - new Date(new Date(lastWeekStart).getFullYear(),0,1))/(7*86400000)+1)).padStart(2,'0')}`;
+
+    // Get last week performance pages
+    const lastWeekPerf = perfPages.filter(p=>{
+      const d=getProp(p,'Date'); return d&&d>=lastWeekStart&&d<=lastWeekEnd;
+    });
+
+    // Build last week compliance per member
+    const lastWeekMap = {};
+    MEMBERS.forEach(m=>{
+      lastWeekMap[m]={core:0,corePossible:0,bbs:0,walkthrough:0,meeting:0,absentDays:0};
+    });
+
+    // Get absence days for last week
+    const lastWeekDays = Array.from({length:6},(_,i)=>{const d=new Date(lastSat);d.setDate(lastSat.getDate()+i);return toStr(d);});
+    const lastWeekWorkDays = lastWeekDays.filter(d=>new Date(d).getDay()!==5);
+
+    lastWeekWorkDays.forEach(ds=>{
+      MEMBERS.forEach(m=>{
+        if(absenceMap[m].has(ds)) lastWeekMap[m].absentDays++;
+      });
+    });
+
+    lastWeekPerf.forEach(p=>{
+      const m=getProp(p,'Team Member'); if(!m||!lastWeekMap[m])return;
+      const d=getProp(p,'Date'); if(!d)return;
+      if(absenceMap[m].has(d)) return; // skip absent days
+      lastWeekMap[m].corePossible+=4;
+      if(getProp(p,'Daily Report Submitted')==='Y') lastWeekMap[m].core++;
+      if(getProp(p,'EasyPlant Validation')==='Y') lastWeekMap[m].core++;
+      if(getProp(p,'Daily Area Inspection')==='Y') lastWeekMap[m].core++;
+      if(getProp(p,'WhatsApp Group Sharing')==='Y') lastWeekMap[m].core++;
+      if(getProp(p,'BBS and SOC')==='Y') lastWeekMap[m].bbs=1;
+      if(getProp(p,'Attending Walkthrough')==='Y') lastWeekMap[m].walkthrough=1;
+      if(getProp(p,'Weekly Meeting')==='Y') lastWeekMap[m].meeting=1;
+    });
+
+    // Determine medals
+    const proposed = MEMBERS.map(m=>{
+      const lw = lastWeekMap[m];
+      const corePct = lw.corePossible>0 ? Math.round(lw.core/lw.corePossible*100) : null;
+      const bonusScore = lw.bbs+lw.walkthrough+lw.meeting;
+      const gold = corePct===100;
+      const bonus = gold && bonusScore===3;
+      return {member:m, corePct, bonusScore, gold, bonus, absentDays:lw.absentDays};
+    });
+
+    // Check already confirmed for this week
+    const confirmedThisWeek = achievPages.filter(p=>getProp(p,'Week')===weekLabel).map(p=>getProp(p,'Team Member'));
+
+    // Render medals section
+    const medPanel = document.getElementById('medals-panel');
+    document.getElementById('medals-week-label').textContent = weekLabel;
+
+    const hasProposed = proposed.some(p=>p.gold);
+    if(!hasProposed){
+      document.getElementById('medals-content').innerHTML = '<div class="empty">No gold medal candidates last week — keep pushing</div>';
+    } else {
+      const rows = proposed.map(p=>{
+        if(!p.gold) return '';
+        const alreadyConfirmed = confirmedThisWeek.includes(p.member);
+        const shortName = p.member.split('.')[1]?.trim()||p.member;
+        const medalLabel = p.bonus ? '🏆 Gold + Bonus' : '🥇 Weekly Gold';
+        const medalColor = p.bonus ? '#6A1B9A' : '#BA7517';
+        const absentNote = p.absentDays>0 ? `<span style="font-size:10px;color:#378ADD;margin-left:6px">${p.absentDays}d absent</span>` : '';
+        const bonusDetail = `BBS:${p.bonusScore>=1?'✓':'✗'} Walk:${p.bonusScore>=2?'✓':'✗'} Meet:${p.bonusScore>=3?'✓':'✗'}`;
+        const btn = alreadyConfirmed
+          ? `<span style="font-size:11px;color:#1D9E75;font-weight:500">✓ Confirmed</span>`
+          : `<button onclick="confirmMedal('${p.member}','${p.bonus?'Weekly Bonus':'Weekly Gold'}','${weekLabel}',${p.corePct},${p.bonusScore},'${lastWeekStart}')" style="font-size:11px;padding:3px 10px;color:#fff;background:${medalColor};border:none;border-radius:4px;cursor:pointer">Confirm</button>`;
+        return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:.5px solid #F0F0F0">
+          <div>
+            <span style="font-size:13px;font-weight:500">${shortName}${absentNote}</span>
+            <span style="font-size:11px;margin-left:8px;color:${medalColor};font-weight:500">${medalLabel}</span>
+            <div style="font-size:10px;color:#888;margin-top:2px">Core: ${p.corePct}% · ${bonusDetail}</div>
+          </div>
+          ${btn}
+        </div>`;
+      }).filter(Boolean).join('');
+      document.getElementById('medals-content').innerHTML = rows || '<div class="empty">No gold candidates</div>';
+    }
+
+    // Hall of medals — all confirmed
+    const confirmed = [...achievPages].sort((a,b)=>(getProp(b,'Week')||'').localeCompare(getProp(a,'Week')||'')).slice(0,20);
+    const hallBody = document.getElementById('hall-content');
+    if(confirmed.length===0){
+      hallBody.innerHTML='<div class="empty">No medals confirmed yet — first week coming up</div>';
+    } else {
+      const grouped = {};
+      confirmed.forEach(p=>{
+        const w=getProp(p,'Week')||'—';
+        if(!grouped[w])grouped[w]=[];
+        grouped[w].push(p);
+      });
+      hallBody.innerHTML = Object.entries(grouped).slice(0,6).map(([week,entries])=>{
+        const pills = entries.map(e=>{
+          const mt=getProp(e,'Medal Type')||'';
+          const mn=getProp(e,'Team Member')||'';
+          const shortN=mn.split('.')[1]?.trim()||mn;
+          const col=mt==='Weekly Bonus'?'#6A1B9A':mt==='Monthly Gold'?'#BF360C':'#BA7517';
+          const icon=mt==='Weekly Bonus'?'🏆':mt==='Monthly Gold'?'🎖':'🥇';
+          return`<span style="display:inline-flex;align-items:center;gap:4px;background:#F7F7F7;border:.5px solid #E5E5E5;border-radius:20px;padding:3px 10px;font-size:11px;margin:2px">
+            ${icon} <span style="font-weight:500;color:${col}">${shortN}</span>
+          </span>`;
+        }).join('');
+        return`<div style="padding:6px 0;border-bottom:.5px solid #F5F5F5">
+          <div style="font-size:11px;color:#888;margin-bottom:4px">${week}</div>
+          <div>${pills}</div>
+        </div>`;
+      }).join('');
+    }
+
   }catch(e){
     document.getElementById('error-bar').style.display='block';
     console.error(e);
@@ -486,6 +624,45 @@ async function load(){
 }
 
 load();
+
+async function confirmMedal(member, medalType, week, coreScore, bonusScore, weekStart){
+  const btn = event.target;
+  btn.disabled=true; btn.textContent='Saving...';
+  const shortName = member.split('.')[1]?.trim()||member;
+  const achievement = `${shortName} · ${medalType} · ${week}`;
+  try{
+    const r = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:500,
+        system:'You save a medal record to Notion. Return only: {"ok":true} or {"ok":false,"error":"reason"}',
+        messages:[{role:'user',content:`Save this medal to Notion Achievement Registry (data_source_id: 66b990e1-5d55-44e7-9f5e-a01b505183df):
+Achievement: "${achievement}"
+Team Member: "${member}"
+Medal Type: "${medalType}"
+Week: "${week}"
+Week Start: "${weekStart}"
+Core Score: ${coreScore}
+Bonus Score: ${bonusScore}
+Confirmed By: "F. Cuervo"
+Return only {"ok":true} when done.`}],
+        mcp_servers:[{type:'url',url:'https://mcp.notion.com/mcp',name:'notion'}]
+      })
+    });
+    const data = await r.json();
+    const txt = data.content?.find(b=>b.type==='text')?.text||'{}';
+    const res = JSON.parse(txt.replace(/```json|```/g,'').trim().match(/\{[\s\S]*\}/)?.[0]||'{}');
+    if(res.ok){
+      btn.textContent='✓ Saved';
+      btn.style.background='#1D9E75';
+      setTimeout(()=>load(),1000);
+    } else {
+      btn.textContent='Error'; btn.disabled=false;
+    }
+  }catch(e){btn.textContent='Error';btn.disabled=false;}
+}
 </script>
 </body>
 </html>
