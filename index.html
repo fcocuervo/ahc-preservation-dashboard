@@ -92,13 +92,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
 
+  <div class="panel">
+    <div class="panel-title">Weekly compliance — this week</div>
+    <div id="comp-container"><div class="empty">Loading...</div></div>
+  </div>
+
   <div class="two-col">
     <div class="panel">
-      <div class="panel-title">Weekly compliance — this week</div>
-      <table class="tbl">
-        <thead><tr><th>Member</th><th>Report</th><th>EasyPlant</th><th>Inspection</th><th>WhatsApp</th></tr></thead>
-        <tbody id="comp-body"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody>
-      </table>
+      <div class="panel-title">Activity patterns — this week</div>
+      <div id="activity-patterns"><div class="empty">Loading...</div></div>
     </div>
     <div class="panel">
       <div class="panel-title">Upcoming rotation — next 14 days</div>
@@ -259,26 +261,96 @@ async function load(){
       return`<div class="sup-card"><div class="sup-name">${s}</div>${rep?`<span class="badge ${hi?'b-no':'b-ok'}">${hi?'⚠ Issues':'Submitted'}</span>`:'<span class="badge b-warn">Pending</span>'}</div>`;
     }).join('');
 
+    // Build compliance data per person per day
+    const MEMBERS = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
+    const ACTS = ['Daily Report Submitted','EasyPlant Validation','Daily Area Inspection','WhatsApp Group Sharing'];
+    const ACT_LABELS = ['Report','EasyPlant','Inspection','WhatsApp'];
+    const workDays = weekDates.filter(d=>d.getDay()!==5); // excl Friday
     const compMap={};
-    weekPerfPages.forEach(p=>{
-      const m=getProp(p,'Team Member'); if(!m)return;
-      if(!compMap[m])compMap[m]={reportY:0,easyY:0,inspY:0,waY:0};
-      if(getProp(p,'Daily Report Submitted')==='Y')compMap[m].reportY++;
-      if(getProp(p,'EasyPlant Validation')==='Y')compMap[m].easyY++;
-      if(getProp(p,'Daily Area Inspection')==='Y')compMap[m].inspY++;
-      if(getProp(p,'WhatsApp Group Sharing')==='Y')compMap[m].waY++;
+    MEMBERS.forEach(m=>{
+      compMap[m]={days:{},totals:{report:0,easy:0,insp:0,wa:0},totalPossible:0,totalDone:0};
+      workDays.forEach(d=>{compMap[m].days[toStr(d)]={report:false,easy:false,insp:false,wa:false,logged:false};});
     });
-    const cb=document.getElementById('comp-body');
-    const compEntries=Object.entries(compMap);
-    cb.innerHTML=compEntries.length===0
-      ?'<tr><td colspan="5" class="empty">No compliance data logged this week</td></tr>'
-      :compEntries.map(([m,v])=>`<tr>
-        <td style="font-weight:500">${m}</td>
-        <td>${badge(v.reportY>0?'Y':'N')}</td>
-        <td>${badge(v.easyY>0?'Y':'N')}</td>
-        <td>${badge(v.inspY>0?'Y':'N')}</td>
-        <td>${badge(v.waY>0?'Y':'N')}</td>
-      </tr>`).join('');
+    weekPerfPages.forEach(p=>{
+      const m=getProp(p,'Team Member'); if(!m||!compMap[m])return;
+      const d=getProp(p,'Date'); if(!d)return;
+      if(!compMap[m].days[d])compMap[m].days[d]={report:false,easy:false,insp:false,wa:false,logged:false};
+      compMap[m].days[d].logged=true;
+      if(getProp(p,'Daily Report Submitted')==='Y'){compMap[m].days[d].report=true;compMap[m].totals.report++;}
+      if(getProp(p,'EasyPlant Validation')==='Y'){compMap[m].days[d].easy=true;compMap[m].totals.easy++;}
+      if(getProp(p,'Daily Area Inspection')==='Y'){compMap[m].days[d].insp=true;compMap[m].totals.insp++;}
+      if(getProp(p,'WhatsApp Group Sharing')==='Y'){compMap[m].days[d].wa=true;compMap[m].totals.wa++;}
+    });
+
+    const doneWorkDays = workDays.filter(d=>toStr(d)<=todayStr0);
+    const maxDays = doneWorkDays.length || 1;
+
+    // === SECTION B: Score % per person ===
+    const scoreHTML = MEMBERS.map(m=>{
+      const t=compMap[m].totals;
+      const total = t.report+t.easy+t.insp+t.wa;
+      const possible = maxDays*4;
+      const pct = possible>0 ? Math.round(total/possible*100) : 0;
+      const col = pct>=80?'#1D9E75':pct>=50?'#BA7517':'#A32D2D';
+      return`<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:.5px solid #F0F0F0">
+        <div style="font-size:12px;font-weight:500;min-width:110px">${m.split('.')[1]?.trim()||m}</div>
+        <div style="flex:1;background:#F0F0F0;border-radius:4px;height:8px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${col};border-radius:4px;transition:width .3s"></div>
+        </div>
+        <div style="font-size:12px;font-weight:500;min-width:36px;color:${col}">${pct}%</div>
+        <div style="font-size:10px;color:#888">${total}/${possible}</div>
+      </div>`;
+    }).join('');
+
+    // === SECTION A: Heatmap per person per day ===
+    const dayLabels = doneWorkDays.map(d=>['Sa','Su','Mo','Tu','We','Th'][d.getDay()===0?1:d.getDay()-6<0?0:d.getDay()]);
+    const dayNames = ['Sa','Su','Mo','Tu','We','Th','Fr'];
+    const heatHTML = `<div style="margin-top:12px">
+      <div style="display:flex;gap:4px;margin-bottom:4px;margin-left:118px">
+        ${doneWorkDays.map(d=>`<div style="width:28px;text-align:center;font-size:10px;color:#888">${dayNames[d.getDay()]}</div>`).join('')}
+      </div>
+      ${MEMBERS.map(m=>{
+        return`<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
+          <div style="font-size:11px;min-width:114px;color:#555">${m.split('.')[1]?.trim()||m}</div>
+          ${doneWorkDays.map(d=>{
+            const ds=toStr(d); const day=compMap[m].days[ds];
+            if(!day||!day.logged){return`<div style="width:28px;height:28px;border-radius:4px;background:#F5F5F5;border:.5px solid #E5E5E5"></div>`;}
+            const score=(day.report?1:0)+(day.easy?1:0)+(day.insp?1:0)+(day.wa?1:0);
+            const bg=score===4?'#1D9E75':score>=2?'#BA7517':'#A32D2D';
+            return`<div title="${score}/4 activities" style="width:28px;height:28px;border-radius:4px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:500">${score}</div>`;
+          }).join('')}
+        </div>`;
+      }).join('')}
+      <div style="display:flex;gap:12px;margin-top:8px;margin-left:118px">
+        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#1D9E75;border-radius:2px;margin-right:3px"></span>4/4</span>
+        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#BA7517;border-radius:2px;margin-right:3px"></span>2-3/4</span>
+        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#A32D2D;border-radius:2px;margin-right:3px"></span>0-1/4</span>
+        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#F5F5F5;border:.5px solid #E5E5E5;border-radius:2px;margin-right:3px"></span>No data</span>
+      </div>
+    </div>`;
+
+    document.getElementById('comp-container').innerHTML = scoreHTML + heatHTML;
+
+    // === SECTION C: Activity patterns ===
+    const actTotals = ACTS.map((act,i)=>{
+      let total=0; MEMBERS.forEach(m=>{
+        const k=['report','easy','insp','wa'][i];
+        total+=compMap[m].totals[k];
+      });
+      const possible = maxDays*MEMBERS.length;
+      const pct = possible>0?Math.round(total/possible*100):0;
+      const col = pct>=80?'#1D9E75':pct>=50?'#BA7517':'#A32D2D';
+      return`<div style="padding:6px 0;border-bottom:.5px solid #F0F0F0">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:500">${ACT_LABELS[i]}</span>
+          <span style="font-size:12px;color:${col};font-weight:500">${pct}% <span style="font-size:10px;color:#888;font-weight:400">${total}/${possible}</span></span>
+        </div>
+        <div style="background:#F0F0F0;border-radius:4px;height:6px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${col};border-radius:4px"></div>
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('activity-patterns').innerHTML = actTotals || '<div class="empty">No data</div>';
 
     const rl=document.getElementById('rot-list');
     rl.innerHTML=upcomingRot.length===0
