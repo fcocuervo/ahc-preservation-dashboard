@@ -217,7 +217,17 @@ async function load(){
     const weekSupPages = supPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=weekStart&&d<=todayStr0;});
     const issuePages = supPages.filter(p=>getProp(p,'Issues Found')===true&&getProp(p,'Date')>=sevenAgo);
     const weekPerfPages = perfPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=weekStart&&d<=todayStr0;});
-    const upcomingRot = rotPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=todayStr0&&d<=nextTwo;}).sort((a,b)=>getProp(a,'Date').localeCompare(getProp(b,'Date')));
+    const upcomingRot = rotPages.filter(p=>{
+      const props = p.properties?.['Date'];
+      const start = props?.date?.start || null;
+      const end = props?.date?.end || start;
+      if(!start) return false;
+      return start <= nextTwo && (end || start) >= todayStr0;
+    }).sort((a,b)=>{
+      const sa = a.properties?.['Date']?.date?.start||'';
+      const sb = b.properties?.['Date']?.date?.start||'';
+      return sa.localeCompare(sb);
+    });
     const recentAnalyst = [...analystPages].sort((a,b)=>(getProp(b,'Week Number')||0)-(getProp(a,'Week Number')||0)).slice(0,3);
 
     const reported = todayReports.map(p=>getProp(p,'Supervisor'));
@@ -272,10 +282,15 @@ async function load(){
     const rl=document.getElementById('rot-list');
     rl.innerHTML=upcomingRot.length===0
       ?'<div class="empty">No rotation events in next 14 days</div>'
-      :upcomingRot.slice(0,8).map(p=>`<div class="row">
-        <div><div class="row-name">${getProp(p,'Team Member')||'—'}</div><div class="row-sub">${getProp(p,'Date')}</div></div>
-        ${badge(getProp(p,'Event Type'))}
-      </div>`).join('');
+      :upcomingRot.slice(0,8).map(p=>{
+          const start = p.properties?.['Date']?.date?.start||'—';
+          const end = p.properties?.['Date']?.date?.end||null;
+          const dateLabel = end && end!==start ? `${start} → ${end}` : start;
+          return`<div class="row">
+            <div><div class="row-name">${getProp(p,'Team Member')||'—'}</div><div class="row-sub">${dateLabel}</div></div>
+            <span class="badge ${getProp(p,'Event Type')==='Rotation'?'b-rot':getProp(p,'Event Type')==='Recovery Day'?'b-warn':'b-na'}">${getProp(p,'Event Type')||'—'}</span>
+          </div>`;
+        }).join('');
 
     const ib=document.getElementById('issues-body');
     ib.innerHTML=issuePages.length===0
