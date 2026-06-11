@@ -98,15 +98,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="comp-container"><div class="empty">Loading...</div></div>
   </div>
 
-  <div class="two-col">
-    <div class="panel">
-      <div class="panel-title">Activity patterns — this week</div>
-      <div id="activity-patterns"><div class="empty">Loading...</div></div>
-    </div>
-    <div class="panel">
-      <div class="panel-title">Upcoming rotation — next 14 days</div>
-      <div id="rot-list"><div class="empty">Loading...</div></div>
-    </div>
+  <div class="panel">
+    <div class="panel-title">Upcoming rotation — next 14 days</div>
+    <div id="rot-list"><div class="empty">Loading...</div></div>
   </div>
 
   <div class="two-col">
@@ -146,20 +140,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 
   <!-- MEDALS SECTION -->
-  <div class="panel" id="medals-panel" style="border-left:3px solid #BA7517">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div class="panel-title" style="margin-bottom:0">Weekly medals — proposed winners</div>
-      <span id="medals-week-label" style="font-size:11px;color:#888"></span>
+  <div class="two-col">
+    <div class="panel" style="border-left:3px solid #1A1A2E">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div class="panel-title" style="margin-bottom:2px">Leader of the Week</div>
+          <div style="font-size:10px;color:#888">Best score last week · Confirm every Saturday</div>
+        </div>
+        <span id="medals-week-label" style="font-size:11px;color:#888"></span>
+      </div>
+      <div id="medals-content"><div class="empty">Loading...</div></div>
     </div>
-    <div id="medals-content"><div class="empty">Loading...</div></div>
-  </div>
-
-  <div class="panel" id="hall-panel">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div class="panel-title" style="margin-bottom:0">Hall of medals — confirmed</div>
-      <span style="font-size:11px;color:#888">Season 2026</span>
+    <div class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="panel-title" style="margin-bottom:0">Season standings — 2026</div>
+        <div style="font-size:10px;color:#888">
+          <span style="margin-right:10px">🦅 Leader</span>
+          <span style="margin-right:10px">🥇 Gold (4🦅)</span>
+          <span>🏆 Trophy (4🥇)</span>
+        </div>
+      </div>
+      <div id="hall-content"><div class="empty">Loading...</div></div>
     </div>
-    <div id="hall-content"><div class="empty">Loading...</div></div>
   </div>
 
 <div class="footer">AHC Preservation Management · Technip Energies · 2026 · <span class="accent">Powered by Notion</span></div>
@@ -432,29 +434,7 @@ async function load(){
 
     document.getElementById('comp-container').innerHTML = scoreHTML + heatHTML;
 
-    // === SECTION C: Activity patterns (only present days up to today per member) ===
-    const actTotals = ACTS.map((act,i)=>{
-      let total=0; let possible=0;
-      MEMBERS.forEach(m=>{
-        // Only count days already passed AND not absent
-        const presentDays=doneWorkDays.filter(d=>!absenceMap[m].has(toStr(d)));
-        possible+=presentDays.length; // each present day = 1 possible per activity
-        const k=['report','easy','insp','wa'][i];
-        total+=compMap[m].totals[k];
-      });
-      const pct = possible>0?Math.round(total/possible*100):0;
-      const col = pct>=80?'#1D9E75':pct>=50?'#BA7517':'#A32D2D';
-      return`<div style="padding:6px 0;border-bottom:.5px solid #F0F0F0">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-          <span style="font-size:12px;font-weight:500">${ACT_LABELS[i]}</span>
-          <span style="font-size:12px;color:${col};font-weight:500">${pct}% <span style="font-size:10px;color:#888;font-weight:400">${total}/${possible}</span></span>
-        </div>
-        <div style="background:#F0F0F0;border-radius:4px;height:6px;overflow:hidden">
-          <div style="width:${pct}%;height:100%;background:${col};border-radius:4px"></div>
-        </div>
-      </div>`;
-    }).join('');
-    document.getElementById('activity-patterns').innerHTML = actTotals || '<div class="empty">No data</div>';
+
 
     const rl=document.getElementById('rot-list');
     rl.innerHTML=upcomingRot.length===0
@@ -543,46 +523,41 @@ async function load(){
         }).join('');
 
 
-    // === MEDALS SYSTEM ===
-    // Week = Sat to Fri (6 working days, Friday included)
-    // Last week: previous Sat to last Fri
+    // === MEDALS SYSTEM — Eagles, Gold, Trophy ===
+    // Week = Sat to Fri. Rotation weeks don't break streaks.
+    // 🦅 Leader of the Week = best score that week
+    // 🥇 Gold Medal = 4 🦅 (skipping rotation weeks)
+    // 🏆 Trophy = 4 🥇 (skipping rotation weeks)
+
     const lastSat = new Date(weekDates[0]); lastSat.setDate(lastSat.getDate()-7);
     const lastFri = new Date(lastSat); lastFri.setDate(lastSat.getDate()+6);
     const lastWeekStart = toStr(lastSat);
     const lastWeekEnd = toStr(lastFri);
 
-    // Week number and label with dates
     const getWeekNum = (d) => {
-      const dt = new Date(d); dt.setHours(0,0,0,0);
-      const jan1 = new Date(dt.getFullYear(),0,1);
-      return Math.ceil(((dt-jan1)/86400000 + jan1.getDay()+1)/7);
+      const dt=new Date(d); dt.setHours(0,0,0,0);
+      const jan1=new Date(dt.getFullYear(),0,1);
+      return Math.ceil(((dt-jan1)/86400000+jan1.getDay()+1)/7);
     };
-    const fmtDate = (d) => {
-      const dt = new Date(d);
-      return dt.toLocaleDateString('en-GB',{month:'short',day:'numeric'});
-    };
+    const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB',{month:'short',day:'numeric'});
     const lastWeekNum = getWeekNum(lastWeekStart);
-    const weekLabel = `W${String(lastWeekNum).padStart(2,'0')} · ${fmtDate(lastWeekStart)} – ${fmtDate(lastWeekEnd)}`;
     const weekKey = `${lastWeekStart.substring(0,4)}-W${String(lastWeekNum).padStart(2,'0')}`;
+    const weekLabel = `W${String(lastWeekNum).padStart(2,'0')} · ${fmtDate(lastWeekStart)} – ${fmtDate(lastWeekEnd)}`;
 
-    // Current week label for header
+    // Current week label
     const curWeekNum = getWeekNum(weekStart);
     const curWeekLabel = `Week ${String(curWeekNum).padStart(2,'0')} · ${fmtDate(weekStart)} – ${fmtDate(toStr(new Date(new Date(weekStart).getTime()+6*86400000)))}`;
     const curWeekEl = document.getElementById('current-week-label');
     if(curWeekEl) curWeekEl.textContent = curWeekLabel;
 
-    // Get last week performance pages (Sat–Fri, all days)
+    // Last week performance
     const lastWeekPerf = perfPages.filter(p=>{
       const d=getProp(p,'Date'); return d&&d>=lastWeekStart&&d<=lastWeekEnd;
     });
 
-    // Build last week map per member
     const lastWeekMap = {};
-    MEMBERS.forEach(m=>{
-      lastWeekMap[m]={core:0,corePossible:0,bbs:0,walkthrough:0,meeting:0,absentDays:0};
-    });
+    MEMBERS.forEach(m=>{lastWeekMap[m]={core:0,corePossible:0,bbs:0,walkthrough:0,meeting:0,absentDays:0};});
 
-    // Absence days last week (all 6 days Sat-Fri)
     const lastWeekAllDays = Array.from({length:6},(_,i)=>{
       const d=new Date(lastSat); d.setDate(lastSat.getDate()+i); return toStr(d);
     });
@@ -592,8 +567,7 @@ async function load(){
 
     lastWeekPerf.forEach(p=>{
       const m=getProp(p,'Team Member'); if(!m||!lastWeekMap[m])return;
-      const d=getProp(p,'Date'); if(!d)return;
-      if(absenceMap[m].has(d)) return;
+      const d=getProp(p,'Date'); if(!d||absenceMap[m].has(d))return;
       lastWeekMap[m].corePossible+=4;
       if(getProp(p,'Daily Report Submitted')==='Y') lastWeekMap[m].core++;
       if(getProp(p,'EasyPlant Validation')==='Y') lastWeekMap[m].core++;
@@ -604,100 +578,168 @@ async function load(){
       if(getProp(p,'Weekly Meeting')==='Y') lastWeekMap[m].meeting=1;
     });
 
-    // Score each member — ONE winner only
+    // Score and find winner
     const scored = MEMBERS.map(m=>{
       const lw=lastWeekMap[m];
-      const corePct = lw.corePossible>0 ? Math.round(lw.core/lw.corePossible*100) : 0;
-      const bonusScore = lw.bbs+lw.walkthrough+lw.meeting;
-      // Combined score: core% * 10 + bonusScore (core is primary, bonus breaks ties)
-      const totalScore = corePct*10 + bonusScore;
-      return {member:m, corePct, bonusScore, totalScore, absentDays:lw.absentDays};
+      const corePct=lw.corePossible>0?Math.round(lw.core/lw.corePossible*100):0;
+      const bonusScore=lw.bbs+lw.walkthrough+lw.meeting;
+      const totalScore=corePct*10+bonusScore;
+      return {member:m,corePct,bonusScore,totalScore,absentDays:lw.absentDays};
     }).sort((a,b)=>b.totalScore-a.totalScore);
 
-    const topScore = scored[0]?.totalScore||0;
-    const winners = scored.filter(p=>p.totalScore===topScore && p.corePct>0);
-    const isTie = winners.length>1;
-    const winner = winners[0]; // for single winner display
+    const topScore=scored[0]?.totalScore||0;
+    const winners=scored.filter(p=>p.totalScore===topScore&&p.corePct>0);
+    const isTie=winners.length>1;
+    const winner=winners[0];
 
-    // Check already confirmed
-    const confirmedThisWeek = achievPages.filter(p=>getProp(p,'Week')===weekKey);
-    const alreadyConfirmed = confirmedThisWeek.length>0;
+    // Already confirmed?
+    const confirmedThisWeek=achievPages.filter(p=>getProp(p,'Week')===weekKey);
+    const alreadyConfirmed=confirmedThisWeek.length>0;
 
-    // Render medals section
-    document.getElementById('medals-week-label').textContent = `Last week: ${weekLabel}`;
+    // === Compute streaks from achievement history ===
+    // For each member: count consecutive 🦅 (skipping weeks they were fully absent)
+    const eaglesByMember = {};
+    const goldsByMember = {};
+    MEMBERS.forEach(m=>{eaglesByMember[m]=0; goldsByMember[m]=0;});
 
-    if(!winner || winner.corePct===0){
-      document.getElementById('medals-content').innerHTML='<div class="empty">No data for last week yet</div>';
-    } else if(alreadyConfirmed){
-      const conf = confirmedThisWeek[0];
-      const confName = (getProp(conf,'Team Member')||'').split('.')[1]?.trim()||'';
-      const confMedal = getProp(conf,'Medal Type')||'';
-      const confColor = confMedal==='Weekly Bonus'?'#6A1B9A':'#BA7517';
-      const confIcon = confMedal==='Weekly Bonus'?'🏆':'🥇';
+    // Sort achievements newest first
+    const sortedAchievements = [...achievPages].sort((a,b)=>
+      (getProp(b,'Week')||'').localeCompare(getProp(a,'Week')||''));
+
+    // Count streaks per member
+    MEMBERS.forEach(m=>{
+      // Get this member's eagle wins in order (newest first)
+      const memberEagles = sortedAchievements.filter(p=>
+        getProp(p,'Team Member')===m && getProp(p,'Medal Type')==='Leader of the Week'
+      );
+      const memberGolds = sortedAchievements.filter(p=>
+        getProp(p,'Team Member')===m && getProp(p,'Medal Type')==='Gold Medal'
+      );
+      eaglesByMember[m] = memberEagles.length; // total eagles (for display)
+      goldsByMember[m] = memberGolds.length;   // total golds (for display)
+    });
+
+    // Trophies = members with 4+ gold medals
+    const trophyMembers = MEMBERS.filter(m=>goldsByMember[m]>=4);
+
+    // === Render: Leader of the Week ===
+    document.getElementById('medals-week-label').textContent = weekLabel;
+
+    if(alreadyConfirmed){
+      const conf=confirmedThisWeek[0];
+      const confName=(getProp(conf,'Team Member')||'').split('.')[1]?.trim()||'';
+      const confScore=getProp(conf,'Core Score');
       document.getElementById('medals-content').innerHTML=`
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 0">
-          <span style="font-size:28px">${confIcon}</span>
+        <div style="display:flex;align-items:center;gap:14px;padding:8px 0">
+          <span style="font-size:36px">🦅</span>
           <div>
-            <div style="font-size:15px;font-weight:500;color:${confColor}">${confName}</div>
-            <div style="font-size:11px;color:#888">${confMedal} · Confirmed by ${getProp(conf,'Confirmed By')||'—'}</div>
+            <div style="font-size:16px;font-weight:500">${confName}</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">Leader of the Week · Core ${confScore}% · Confirmed ✓</div>
           </div>
-          <span style="font-size:11px;color:#1D9E75;margin-left:auto">✓ Confirmed</span>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:#888">All scores this week:</div>
+        <div style="margin-top:4px">${scored.map(s=>`
+          <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:.5px solid #F5F5F5;font-size:12px">
+            <span style="color:${s.member===winner?.member?'#1A1A2E':'#888'};font-weight:${s.member===winner?.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
+            <span style="color:#888">Core ${s.corePct}% · Bonus ${s.bonusScore}/3</span>
+          </div>`).join('')}
         </div>`;
+    } else if(!winner||winner.corePct===0){
+      document.getElementById('medals-content').innerHTML='<div class="empty">No performance data for last week yet</div>';
     } else {
-      const shortName = winner.member.split('.')[1]?.trim()||winner.member;
-      const hasBonus = winner.bonusScore===3;
-      const medalType = hasBonus?'Weekly Bonus':'Weekly Gold';
-      const medalColor = hasBonus?'#6A1B9A':'#BA7517';
-      const medalIcon = hasBonus?'🏆':'🥇';
-      const bonusDetail = `BBS:${winner.bbs||winner.bonusScore>=1?'✓':'✗'} Walk:${winner.walkthrough||winner.bonusScore>=2?'✓':'✗'} Meet:${winner.meeting||winner.bonusScore>=3?'✓':'✗'}`;
-      const absentNote = winner.absentDays>0?`<span style="font-size:10px;color:#378ADD;margin-left:6px">${winner.absentDays}d absent</span>`:'';
-      const tieNote = isTie?`<div style="font-size:10px;color:#BA7517;margin-top:4px">⚠ Tie — ${winners.map(w=>w.member.split('.')[1]?.trim()).join(' & ')} · Your call</div>`:'';
-      const allScores = scored.map(s=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:.5px solid #F5F5F5">
-        <span style="color:${s.member===winner.member?medalColor:'#555'};font-weight:${s.member===winner.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
-        <span style="color:#888">Core: ${s.corePct}% · Bonus: ${s.bonusScore}/3</span>
-      </div>`).join('');
-
+      const shortName=winner.member.split('.')[1]?.trim()||winner.member;
+      const absentNote=winner.absentDays>0?`<span style="font-size:10px;color:#378ADD;margin-left:6px">${winner.absentDays}d absent</span>`:'';
+      const tieNote=isTie?`<div style="font-size:10px;color:#BA7517;margin-top:3px">⚠ Tie — ${winners.map(w=>w.member.split('.')[1]?.trim()).join(' & ')} · Your call</div>`:'';
       document.getElementById('medals-content').innerHTML=`
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:.5px solid #F0F0F0;margin-bottom:10px">
-          <span style="font-size:32px">${medalIcon}</span>
-          <div>
-            <div style="font-size:15px;font-weight:500;color:${medalColor}">${shortName}${absentNote}</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">${medalType} · Core: ${winner.corePct}% · ${bonusDetail}</div>
+        <div style="display:flex;align-items:center;gap:14px;padding:8px 0;border-bottom:.5px solid #F0F0F0;margin-bottom:10px">
+          <span style="font-size:36px">🦅</span>
+          <div style="flex:1">
+            <div style="font-size:16px;font-weight:500">${shortName}${absentNote}</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">Core ${winner.corePct}% · Bonus ${winner.bonusScore}/3</div>
             ${tieNote}
           </div>
-          <button onclick="confirmMedal('${winner.member}','${medalType}','${weekKey}',${winner.corePct},${winner.bonusScore},'${lastWeekStart}')"
-            style="margin-left:auto;font-size:12px;padding:6px 14px;color:#fff;background:${medalColor};border:none;border-radius:6px;cursor:pointer;font-weight:500">
-            Confirm winner
+          <button onclick="confirmMedal('${winner.member}','Leader of the Week','${weekKey}',${winner.corePct},${winner.bonusScore},'${lastWeekStart}')"
+            style="font-size:12px;padding:7px 16px;color:#fff;background:#1A1A2E;border:none;border-radius:6px;cursor:pointer;font-weight:500;white-space:nowrap">
+            🦅 Confirm
           </button>
         </div>
-        <div style="margin-top:4px">${allScores}</div>`;
+        <div style="font-size:11px;color:#888;margin-bottom:4px">All scores:</div>
+        ${scored.map(s=>`
+          <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:.5px solid #F5F5F5;font-size:12px">
+            <span style="color:${s.member===winner.member?'#1A1A2E':'#888'};font-weight:${s.member===winner.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
+            <span style="color:#888">Core ${s.corePct}% · Bonus ${s.bonusScore}/3</span>
+          </div>`).join('')}`;
     }
 
-    // Hall of medals — confirmed history
-    const confirmed = [...achievPages].sort((a,b)=>(getProp(b,'Week')||'').localeCompare(getProp(a,'Week')||'')).slice(0,20);
-    const hallBody = document.getElementById('hall-content');
-    if(confirmed.length===0){
-      hallBody.innerHTML='<div class="empty">No medals confirmed yet — season 2026 underway</div>';
-    } else {
-      hallBody.innerHTML = confirmed.map(e=>{
-        const mt=getProp(e,'Medal Type')||'';
-        const mn=getProp(e,'Team Member')||'';
-        const shortN=mn.split('.')[1]?.trim()||mn;
-        const wk=getProp(e,'Week')||'—';
-        const col=mt==='Weekly Bonus'?'#6A1B9A':mt==='Monthly Gold'?'#BF360C':'#BA7517';
-        const icon=mt==='Weekly Bonus'?'🏆':mt==='Monthly Gold'?'🎖':'🥇';
-        const core=getProp(e,'Core Score'); const bonus=getProp(e,'Bonus Score');
-        return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:.5px solid #F5F5F5">
-          <span style="font-size:18px">${icon}</span>
-          <div style="flex:1">
-            <span style="font-size:13px;font-weight:500;color:${col}">${shortN}</span>
-            <span style="font-size:11px;color:#888;margin-left:8px">${mt}</span>
-          </div>
-          <span style="font-size:11px;color:#888">${wk}</span>
-          ${core!=null?`<span style="font-size:10px;color:#aaa">${core}%</span>`:''}
-        </div>`;
-      }).join('');
-    }
+    // === Render: Season standings ===
+    const hallBody=document.getElementById('hall-content');
+
+    // Build standings table
+    const standingsHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="border-bottom:1px solid #E5E5E5">
+            <th style="text-align:left;padding:6px 4px;font-size:11px;color:#888;font-weight:500">Member</th>
+            <th style="text-align:center;padding:6px 4px;font-size:11px;color:#888;font-weight:500">🦅 Eagles</th>
+            <th style="text-align:center;padding:6px 4px;font-size:11px;color:#888;font-weight:500">🥇 Golds</th>
+            <th style="text-align:center;padding:6px 4px;font-size:11px;color:#888;font-weight:500">🏆 Trophy</th>
+            <th style="text-align:left;padding:6px 4px;font-size:11px;color:#888;font-weight:500">Progress</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${MEMBERS.map(m=>{
+            const shortN=m.split('.')[1]?.trim()||m;
+            const eagles=eaglesByMember[m];
+            const golds=goldsByMember[m];
+            const trophies=Math.floor(golds/4);
+            const eaglesForNextGold=eagles%4;
+            const goldsForNextTrophy=golds%4;
+            // Progress bar toward next milestone
+            let progressPct, progressLabel, progressColor;
+            if(trophies>=1){progressPct=100;progressLabel='🏆 Trophy earned';progressColor='#E94560';}
+            else if(golds>=4){progressPct=100;progressLabel='🏆 Trophy pending';progressColor='#E94560';}
+            else if(eagles>0&&golds<4){
+              progressPct=Math.round((goldsForNextTrophy/4)*100)||Math.round((eaglesForNextGold/4)*100);
+              progressLabel=golds>0?`${4-goldsForNextTrophy} 🥇 to trophy`:`${4-eaglesForNextGold} 🦅 to gold`;
+              progressColor='#BA7517';
+            } else {
+              progressPct=0; progressLabel='No eagles yet'; progressColor='#888';
+            }
+            return`<tr style="border-bottom:.5px solid #F5F5F5">
+              <td style="padding:8px 4px;font-weight:500">${shortN}</td>
+              <td style="text-align:center;padding:8px 4px">${'🦅'.repeat(Math.min(eagles,4))}${eagles>4?`+${eagles-4}`:''}</td>
+              <td style="text-align:center;padding:8px 4px">${golds>0?'🥇'.repeat(Math.min(golds,4)):'-'}${golds>4?`+${golds-4}`:''}</td>
+              <td style="text-align:center;padding:8px 4px">${trophies>0?'🏆'.repeat(trophies):'-'}</td>
+              <td style="padding:8px 4px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="flex:1;background:#F0F0F0;border-radius:3px;height:5px;overflow:hidden">
+                    <div style="width:${progressPct}%;height:100%;background:${progressColor};border-radius:3px"></div>
+                  </div>
+                  <span style="font-size:10px;color:#888;white-space:nowrap">${progressLabel}</span>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+
+    // Recent winners list
+    const recentWinners = sortedAchievements.filter(p=>getProp(p,'Medal Type')==='Leader of the Week').slice(0,8);
+    const recentHTML = recentWinners.length>0 ? `
+      <div style="margin-top:14px;padding-top:10px;border-top:.5px solid #F0F0F0">
+        <div style="font-size:11px;color:#888;margin-bottom:6px">Recent leaders</div>
+        ${recentWinners.map(p=>{
+          const mn=(getProp(p,'Team Member')||'').split('.')[1]?.trim()||'';
+          const wk=getProp(p,'Week')||'—';
+          const cs=getProp(p,'Core Score');
+          return`<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-bottom:.5px solid #F9F9F9">
+            <span>🦅 <span style="font-weight:500">${mn}</span></span>
+            <span style="color:#888">${wk}${cs!=null?' · '+cs+'%':''}</span>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    hallBody.innerHTML = standingsHTML + recentHTML;
 
   }catch(e){
     document.getElementById('error-bar').style.display='block';
