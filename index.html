@@ -178,7 +178,9 @@ const DAYS = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
 function toStr(d){return d.toISOString().split('T')[0]}
 function getWeekDates(){
   const t=new Date(),dow=t.getDay();
-  const sat=new Date(t);sat.setDate(t.getDate()-((dow+1)%7));
+  // Sat=6 diff=0, Sun=0 diff=1, Mon=1 diff=2, Tue=2 diff=3, Wed=3 diff=4, Thu=4 diff=5, Fri=5 diff=6
+  const diff = dow===6 ? 0 : dow+1;
+  const sat=new Date(t); sat.setDate(t.getDate()-diff);
   return Array.from({length:7},(_,i)=>{const d=new Date(sat);d.setDate(sat.getDate()+i);return d;});
 }
 function badge(v){
@@ -268,8 +270,18 @@ async function load(){
     m3.textContent=issuePages.length;
     m3.className='metric-value '+(issuePages.length===0?'ok':issuePages.length<=2?'warn':'danger');
 
-    const inRot = weekPerfPages.filter(p=>getProp(p,'Presence Status')==='Rotation').map(p=>getProp(p,'Team Member')).filter((v,i,a)=>a.indexOf(v)===i);
-    document.getElementById('m4').textContent=inRot.length;
+    // In Rotation: members absent TODAY due to Rotation (from calendar, not Performance Tracking)
+    // absenceMap is built below — pre-compute using rotPages directly for today
+    const inRotToday = MEMBERS_PRE.filter(m=>{
+      return rotPages.some(p=>{
+        if(getProp(p,'Team Member')!==m && getProp(p,'Team Member')!=='All Team') return false;
+        if(getProp(p,'Event Type')!=='Rotation') return false;
+        const s=getProp(p,'Date'), e=getDateEnd(p,'Date')||s;
+        return s&&e&&todayStr0>=s&&todayStr0<=e;
+      });
+    });
+    document.getElementById('m4').textContent=inRotToday.length;
+    document.getElementById('m4').className='metric-value '+(inRotToday.length>0?'warn':'ok');
 
     const latestTags = recentAnalyst[0] ? getProp(recentAnalyst[0],'EasyPlant Tags Closed') : '—';
     document.getElementById('m5').textContent=latestTags??'—';
@@ -281,10 +293,11 @@ async function load(){
     }).join('');
 
     // === ROTATION AWARENESS: build absence map per person per day ===
-    const MEMBERS = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
+    const MEMBERS_PRE = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
+    const MEMBERS = MEMBERS_PRE;
     const ACTS = ['Daily Report Submitted','EasyPlant Validation','Daily Area Inspection','WhatsApp Group Sharing'];
     const ACT_LABELS = ['Report','EasyPlant','Inspection','WhatsApp'];
-    const workDays = weekDates.filter(d=>d.getDay()!==5);
+    const workDays = weekDates; // Sat-Fri all 6 days, no day excluded
 
     // Map: member -> Set of dates they are absent (rotation/recovery/holiday)
     const absenceMap = {};
@@ -329,8 +342,7 @@ async function load(){
       if(getProp(p,'WhatsApp Group Sharing')==='Y'){compMap[m].days[d].wa=true;compMap[m].totals.wa++;}
     });
 
-    const doneWorkDays = workDays.filter(d=>toStr(d)<=todayStr0);
-    const dayNames = ['Sa','Su','Mo','Tu','We','Th','Fr'];
+    const doneWorkDays = workDays.filter(d=>toStr(d)<=todayStr0); // only days up to today
 
     // === SECTION B: Score % per person (only present days) ===
     const scoreHTML = MEMBERS.map(m=>{
@@ -355,7 +367,10 @@ async function load(){
     // === SECTION A: Heatmap ===
     const heatHTML = `<div style="margin-top:14px">
       <div style="display:flex;gap:4px;margin-bottom:4px;margin-left:118px">
-        ${doneWorkDays.map(d=>`<div style="width:28px;text-align:center;font-size:10px;color:#888">${dayNames[d.getDay()]}</div>`).join('')}
+        ${doneWorkDays.map(d=>{
+          const labels=['Su','Mo','Tu','We','Th','Fr','Sa'];
+          return`<div style="width:28px;text-align:center;font-size:10px;color:#888">${labels[d.getDay()]}</div>`;
+        }).join('')}
       </div>
       ${MEMBERS.map(m=>{
         return`<div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
@@ -386,12 +401,13 @@ async function load(){
 
     document.getElementById('comp-container').innerHTML = scoreHTML + heatHTML;
 
-    // === SECTION C: Activity patterns (only present days per member) ===
+    // === SECTION C: Activity patterns (only present days up to today per member) ===
     const actTotals = ACTS.map((act,i)=>{
       let total=0; let possible=0;
       MEMBERS.forEach(m=>{
+        // Only count days already passed AND not absent
         const presentDays=doneWorkDays.filter(d=>!absenceMap[m].has(toStr(d)));
-        possible+=presentDays.length;
+        possible+=presentDays.length; // each present day = 1 possible per activity
         const k=['report','easy','insp','wa'][i];
         total+=compMap[m].totals[k];
       });
