@@ -1,4 +1,6 @@
-module.exports = async function handler(req, res) {
+export const config = { runtime: 'nodejs20.x' };
+
+export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -6,11 +8,41 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { dbId } = req.body || {};
-  if (!dbId) return res.status(400).json({ error: 'Missing dbId' });
+  let body;
+  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
+  catch(e) { return res.status(400).json({ error: 'Invalid JSON' }); }
 
-  const NOTION_TOKEN = process.env.NOTION_TOKEN;
-  if (!NOTION_TOKEN) return res.status(500).json({ error: 'Token not configured' });
+  const { dbId, action, properties } = body || {};
+
+  const TOKEN = process.env.NOTION_TOKEN;
+  if (!TOKEN) return res.status(500).json({ error: 'Token not configured' });
+
+  // CREATE PAGE action — used for writing records (e.g. medals) to Notion
+  if (action === 'createPage') {
+    if (!dbId || !properties) return res.status(400).json({ error: 'Missing dbId or properties' });
+    try {
+      const response = await fetch('https://api.notion.com/v1/pages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${TOKEN}`,
+          'Notion-Version': '2022-06-28',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          parent: { database_id: dbId },
+          properties
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) return res.status(response.status).json({ error: data.message || 'Notion error', details: data });
+      return res.status(200).json({ ok: true, page: data });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // DEFAULT: QUERY action
+  if (!dbId) return res.status(400).json({ error: 'Missing dbId' });
 
   try {
     const response = await fetch(
@@ -18,7 +50,7 @@ module.exports = async function handler(req, res) {
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${NOTION_TOKEN}`,
+          'Authorization': `Bearer ${TOKEN}`,
           'Notion-Version': '2022-06-28',
           'Content-Type': 'application/json'
         },
@@ -30,4 +62,4 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-};
+}
