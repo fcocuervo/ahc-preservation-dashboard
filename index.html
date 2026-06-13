@@ -233,14 +233,17 @@ function downloadPDF(){
   // Remove buttons from clone
   clone.querySelectorAll('.btn, #pdf-btn, #refresh-btn').forEach(el=>el.remove());
 
-  // Wrap clone for rendering off-screen at fixed width
+  // Wrap clone for rendering - must be in viewport for html2canvas to capture properly
   const wrapper = document.createElement('div');
   wrapper.style.position='fixed';
-  wrapper.style.left='-9999px';
+  wrapper.style.left='0';
   wrapper.style.top='0';
   wrapper.style.width='800px';
   wrapper.style.background='#fff';
   wrapper.style.padding='12px';
+  wrapper.style.zIndex='-1';
+  wrapper.style.opacity='0.01';
+  wrapper.style.pointerEvents='none';
 
   // Print-friendly overrides: single column, compact
   const style=document.createElement('style');
@@ -266,18 +269,18 @@ function downloadPDF(){
       margin: 8,
       filename: `AHC_Weekly_Report_${today}.pdf`,
       image: { type:'jpeg', quality:0.95 },
-      html2canvas: { scale:2, useCORS:true, windowWidth:800 },
+      html2canvas: { scale:2, useCORS:true, windowWidth:800, logging:false, backgroundColor:'#ffffff' },
       jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
       pagebreak: { mode: ['css','legacy'] }
     }).from(wrapper).save().then(()=>{
       document.body.removeChild(wrapper);
       btn.textContent='⬇ Weekly Report'; btn.disabled=false;
     }).catch((e)=>{
-      console.error(e);
+      console.error('PDF error:',e);
       document.body.removeChild(wrapper);
       btn.textContent='⬇ Weekly Report'; btn.disabled=false;
     });
-  }, 200);
+  }, 600);
 }
 
 async function load(){
