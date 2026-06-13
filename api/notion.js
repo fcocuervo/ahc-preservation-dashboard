@@ -1,6 +1,4 @@
-export const config = { runtime: 'nodejs20.x' };
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -8,14 +6,10 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  let body;
-  try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
-  catch(e) { return res.status(400).json({ error: 'Invalid JSON' }); }
+  const { dbId, action, properties } = req.body || {};
 
-  const { dbId, action, properties } = body || {};
-
-  const TOKEN = process.env.NOTION_TOKEN;
-  if (!TOKEN) return res.status(500).json({ error: 'Token not configured' });
+  const NOTION_TOKEN = process.env.NOTION_TOKEN;
+  if (!NOTION_TOKEN) return res.status(500).json({ error: 'Token not configured' });
 
   // CREATE PAGE action — used for writing records (e.g. medals) to Notion
   if (action === 'createPage') {
@@ -24,7 +18,7 @@ export default async function handler(req, res) {
       const response = await fetch('https://api.notion.com/v1/pages', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${TOKEN}`,
+          'Authorization': `Bearer ${NOTION_TOKEN}`,
           'Notion-Version': '2022-06-28',
           'Content-Type': 'application/json'
         },
@@ -50,7 +44,7 @@ export default async function handler(req, res) {
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${TOKEN}`,
+          'Authorization': `Bearer ${NOTION_TOKEN}`,
           'Notion-Version': '2022-06-28',
           'Content-Type': 'application/json'
         },
@@ -62,4 +56,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-}
+};
