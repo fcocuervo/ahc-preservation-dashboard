@@ -774,37 +774,37 @@ async function confirmMedal(member, medalType, week, coreScore, bonusScore, week
   const shortName = member.split('.')[1]?.trim()||member;
   const achievement = `${shortName} · ${medalType} · ${week}`;
   try{
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
+    const r = await fetch('https://ahc-preservation-dashboard.vercel.app/api/notion',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:500,
-        system:'You save a medal record to Notion. Return only: {"ok":true} or {"ok":false,"error":"reason"}',
-        messages:[{role:'user',content:`Save this medal to Notion Achievement Registry (data_source_id: 66b990e1-5d55-44e7-9f5e-a01b505183df):
-Achievement: "${achievement}"
-Team Member: "${member}"
-Medal Type: "${medalType}"
-Week: "${week}"
-Week Start: "${weekStart}"
-Core Score: ${coreScore}
-Bonus Score: ${bonusScore}
-Confirmed By: "F. Cuervo"
-Return only {"ok":true} when done.`}],
-        mcp_servers:[{type:'url',url:'https://mcp.notion.com/mcp',name:'notion'}]
+        action:'createPage',
+        dbId: DB.achievements,
+        properties:{
+          'Achievement': { title:[{ text:{ content: achievement } }] },
+          'Team Member': { select:{ name: member } },
+          'Medal Type': { select:{ name: medalType } },
+          'Week': { rich_text:[{ text:{ content: week } }] },
+          'Week Start': { date:{ start: weekStart } },
+          'Core Score': { number: coreScore },
+          'Bonus Score': { number: bonusScore },
+          'Confirmed By': { select:{ name: 'F. Cuervo' } }
+        }
       })
     });
     const data = await r.json();
-    const txt = data.content?.find(b=>b.type==='text')?.text||'{}';
-    const res = JSON.parse(txt.replace(/```json|```/g,'').trim().match(/\{[\s\S]*\}/)?.[0]||'{}');
-    if(res.ok){
+    if(data.ok){
       btn.textContent='✓ Saved';
       btn.style.background='#1D9E75';
       setTimeout(()=>load(),1000);
     } else {
+      console.error('Notion error:', data);
       btn.textContent='Error'; btn.disabled=false;
     }
-  }catch(e){btn.textContent='Error';btn.disabled=false;}
+  }catch(e){
+    console.error('Fetch error:', e);
+    btn.textContent='Error';btn.disabled=false;
+  }
 }
 </script>
 </body>
