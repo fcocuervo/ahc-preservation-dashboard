@@ -534,10 +534,13 @@ async function load(){
     const lastWeekStart = toStr(lastSat);
     const lastWeekEnd = toStr(lastFri);
 
+    // Week numbering anchored to W24 = 2026-06-06 (Sat) per Cockpit system
+    const WEEK_ANCHOR = new Date('2026-06-06T00:00:00Z');
+    const WEEK_ANCHOR_NUM = 24;
     const getWeekNum = (d) => {
-      const dt=new Date(d); dt.setHours(0,0,0,0);
-      const jan1=new Date(dt.getFullYear(),0,1);
-      return Math.ceil(((dt-jan1)/86400000+jan1.getDay()+1)/7);
+      const dt=new Date(d+'T00:00:00Z');
+      const diffDays = Math.round((dt-WEEK_ANCHOR)/86400000);
+      return WEEK_ANCHOR_NUM + Math.floor(diffDays/7);
     };
     const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB',{month:'short',day:'numeric'});
     const lastWeekNum = getWeekNum(lastWeekStart);
