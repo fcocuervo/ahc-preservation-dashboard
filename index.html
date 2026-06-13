@@ -599,14 +599,17 @@ async function load(){
     // Score and find winner
     const scored = MEMBERS.map(m=>{
       const lw=lastWeekMap[m];
+      const fullyAbsent = lw.corePossible===0; // absent all Sat-Thu (rotation/recovery/holiday)
       const corePct=lw.corePossible>0?Math.round(lw.core/lw.corePossible*100):0;
-      const bonusScore=lw.bbs+lw.walkthrough+lw.meeting;
+      const bonusScore=fullyAbsent?0:(lw.bbs+lw.walkthrough+lw.meeting);
       const totalScore=corePct*10+bonusScore;
-      return {member:m,corePct,bonusScore,totalScore,absentDays:lw.absentDays};
+      return {member:m,corePct,bonusScore,totalScore,absentDays:lw.absentDays,fullyAbsent};
     }).sort((a,b)=>b.totalScore-a.totalScore);
 
-    const topScore=scored[0]?.totalScore||0;
-    const winners=scored.filter(p=>p.totalScore===topScore&&p.corePct>0);
+    // Eligible = present at least 1 day this week (Sat-Thu)
+    const eligible = scored.filter(p=>!p.fullyAbsent);
+    const topScore=eligible[0]?.totalScore||0;
+    const winners=eligible.filter(p=>p.totalScore===topScore&&p.corePct>0);
     const isTie=winners.length>1;
     const winner=winners[0];
 
@@ -685,7 +688,7 @@ async function load(){
         ${scored.map(s=>`
           <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:.5px solid #F5F5F5;font-size:12px">
             <span style="color:${s.member===winner.member?'#1A1A2E':'#888'};font-weight:${s.member===winner.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
-            <span style="color:#888">Core ${s.corePct}% · Bonus ${s.bonusScore}/3</span>
+            <span style="color:#888">${s.fullyAbsent?'Absent all week (rotation/recovery)':`Core ${s.corePct}% · Bonus ${s.bonusScore}/3`}</span>
           </div>`).join('')}`;
     }
 
@@ -776,7 +779,7 @@ async function confirmMedal(member, medalType, week, coreScore, bonusScore, week
   const shortName = member.split('.')[1]?.trim()||member;
   const achievement = `${shortName} · ${medalType} · ${week}`;
   try{
-    const r = await fetch('https://ahc-preservation-dashboard.vercel.app/api/notion',{
+    const r = await fetch('/api/notion',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
@@ -801,11 +804,11 @@ async function confirmMedal(member, medalType, week, coreScore, bonusScore, week
       setTimeout(()=>load(),1000);
     } else {
       console.error('Notion error:', data);
-      btn.textContent='Error'; btn.disabled=false;
+      btn.textContent='Err: '+(data.error||r.status).toString().substring(0,30); btn.disabled=false;
     }
   }catch(e){
     console.error('Fetch error:', e);
-    btn.textContent='Error';btn.disabled=false;
+    btn.textContent='Err: '+e.message.substring(0,30);btn.disabled=false;
   }
 }
 </script>
