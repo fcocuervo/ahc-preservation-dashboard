@@ -543,9 +543,11 @@ async function load(){
     // 🏆 Trophy = 4 🥇 (skipping rotation weeks)
 
     const lastSat = new Date(weekDates[0]); lastSat.setDate(lastSat.getDate()-7);
-    const lastFri = new Date(lastSat); lastFri.setDate(lastSat.getDate()+6);
+    const lastThu = new Date(lastSat); lastThu.setDate(lastSat.getDate()+5); // Sat..Thu = 5 days, Friday excluded
+    const lastFri = new Date(lastSat); lastFri.setDate(lastSat.getDate()+6); // for week label display only
     const lastWeekStart = toStr(lastSat);
-    const lastWeekEnd = toStr(lastFri);
+    const lastWeekEnd = toStr(lastThu); // medals only consider Sat-Thu (not all come on Friday)
+    const lastWeekEndLabel = toStr(lastFri); // full week range for display
 
     // Week numbering anchored to W24 = 2026-06-06 (Sat) per Cockpit system
     const WEEK_ANCHOR = new Date('2026-06-06T00:00:00Z');
@@ -558,7 +560,7 @@ async function load(){
     const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB',{month:'short',day:'numeric'});
     const lastWeekNum = getWeekNum(lastWeekStart);
     const weekKey = `${lastWeekStart.substring(0,4)}-W${String(lastWeekNum).padStart(2,'0')}`;
-    const weekLabel = `W${String(lastWeekNum).padStart(2,'0')} · ${fmtDate(lastWeekStart)} – ${fmtDate(lastWeekEnd)}`;
+    const weekLabel = `W${String(lastWeekNum).padStart(2,'0')} · ${fmtDate(lastWeekStart)} – ${fmtDate(lastWeekEndLabel)} (medals: Sat-Thu)`;
 
     // Current week label
     const curWeekNum = getWeekNum(weekStart);
@@ -574,7 +576,7 @@ async function load(){
     const lastWeekMap = {};
     MEMBERS.forEach(m=>{lastWeekMap[m]={core:0,corePossible:0,bbs:0,walkthrough:0,meeting:0,absentDays:0};});
 
-    const lastWeekAllDays = Array.from({length:6},(_,i)=>{
+    const lastWeekAllDays = Array.from({length:5},(_,i)=>{ // Sat-Thu only, Friday excluded
       const d=new Date(lastSat); d.setDate(lastSat.getDate()+i); return toStr(d);
     });
     lastWeekAllDays.forEach(ds=>{
