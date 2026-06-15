@@ -6,10 +6,32 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { dbId, action, properties } = req.body || {};
+  const { dbId, action, properties, pageId, filter } = req.body || {};
 
   const NOTION_TOKEN = process.env.NOTION_TOKEN;
   if (!NOTION_TOKEN) return res.status(500).json({ error: 'Token not configured' });
+
+  // UPDATE PAGE action — used for writing Report Score to existing pages
+  if (action === 'updatePage') {
+    const { pageId, properties } = body;
+    if (!pageId || !properties) return res.status(400).json({ error: 'Missing pageId or properties' });
+    try {
+      const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${NOTION_TOKEN}`,
+          'Notion-Version': '2022-06-28',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties })
+      });
+      const data = await response.json();
+      if (!response.ok) return res.status(response.status).json({ error: data.message||'Notion error', details: data });
+      return res.status(200).json({ ok: true });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
 
   // CREATE PAGE action — used for writing records (e.g. medals) to Notion
   if (action === 'createPage') {
@@ -48,7 +70,7 @@ module.exports = async function handler(req, res) {
           'Notion-Version': '2022-06-28',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ page_size: 100 })
+        body: JSON.stringify({ page_size: 100, ...(filter ? { filter } : {}) })
       }
     );
     const data = await response.json();
