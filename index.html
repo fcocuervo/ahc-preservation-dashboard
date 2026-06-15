@@ -273,65 +273,113 @@ async function scoreReports(){
   btn.textContent='Scoring...'; btn.disabled=true;
 
   const today = toStr(new Date());
+
+  // Get current week Sat-Thu window
+  const dow = new Date().getDay();
+  const diff = dow===6?0:dow+1;
+  const weekSat = new Date(); weekSat.setDate(weekSat.getDate()-diff);
+  const weekThu = new Date(weekSat); weekThu.setDate(weekSat.getDate()+5);
+  const weekStart = toStr(weekSat);
+  const weekEnd = toStr(weekThu);
+
   try{
-    // Query today's supervisor reports
-    const r = await fetch('/api/notion',{
+    // 1. Query ALL reports this week (to check BBS/SOC weekly completion)
+    const rWeek = await fetch('/api/notion',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         dbId: 'b4d8bf6ea1074dd4844ec6968a848b54',
-        filter: { property:'Date', date:{ equals: today } }
+        filter: { and:[
+          { property:'Date', date:{ on_or_after: weekStart }},
+          { property:'Date', date:{ on_or_before: weekEnd }}
+        ]}
       })
     });
-    const data = await r.json();
-    const pages = data.results||[];
+    const weekData = await rWeek.json();
+    const weekPages = weekData.results||[];
 
-    if(pages.length===0){
+    // Build BBS/SOC completion map per supervisor (did they complete it at ANY point this week?)
+    const bbsCompletedThisWeek = {};
+    weekPages.forEach(p=>{
+      const sup = p.properties?.Supervisor?.select?.name;
+      const bbs = p.properties?.['BBS / SOC']?.select?.name;
+      if(sup && bbs==='Completed') bbsCompletedThisWeek[sup]=true;
+    });
+
+    // 2. Score TODAY's reports
+    const rToday = await fetch('/api/notion',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        dbId: 'b4d8bf6ea1074dd4844ec6968a848b54',
+        filter: { property:'Date', date:{ equals: today }}
+      })
+    });
+    const todayData = await rToday.json();
+    const todayPages = todayData.results||[];
+
+    if(todayPages.length===0){
       btn.textContent='No reports today'; btn.disabled=false;
       setTimeout(()=>{btn.textContent='⚡ Score Reports';btn.disabled=false;},2000);
       return;
     }
 
     let scored=0;
-    for(const page of pages){
+    for(const page of todayPages){
       const p = page.properties||{};
+      const sup = p.Supervisor?.select?.name||'';
 
-      // Score calculation (7 points max)
-      let pts = 0;
+      // Core daily score (6 pts max)
+      let pts=0;
       if(p['Daily Area Inspection']?.select?.name==='Completed') pts+=2;
       if(p['EasyPlant Validation']?.select?.name==='Completed') pts+=2;
-      if(p['BBS / SOC']?.select?.name==='Completed') pts+=1;
-      const obs = p['General Observations']?.rich_text?.[0]?.plain_text||'';
+      const obs=p['General Observations']?.rich_text?.[0]?.plain_text||'';
       if(obs.length>20) pts+=1;
-      const photos = p['Photos - Routine Activities']?.files||[];
+      const photos=p['Photos - Routine Activities']?.files||[];
       if(photos.length>0) pts+=1;
 
-      // Determine score label
-      const pct = Math.round(pts/7*100);
+      // Weekly BBS/SOC bonus (+1 if completed at any point this week)
+      if(bbsCompletedThisWeek[sup]) pts+=1;
+
+      // Semaphore (7 pts max)
+      const pct=Math.round(pts/7*100);
       let scoreLabel;
       if(pct>=85) scoreLabel='🟢 Green — 85%+';
       else if(pct>=40) scoreLabel='🟡 Orange — 40-84%';
       else scoreLabel='🔴 Red — Below 40%';
 
       // Write to Notion
-      const wr = await fetch('/api/notion',{
+      const wr=await fetch('/api/notion',{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
+        body:JSON.stringify({
           action:'updatePage',
-          pageId: page.id,
-          properties:{
-            'Report Score':{ select:{ name: scoreLabel } }
-          }
+          pageId:page.id,
+          properties:{'Report Score':{select:{name:scoreLabel}}}
         })
       });
-      const wd = await wr.json();
-      if(wd.ok) scored++;
+      const wd=await wr.json();
+      if(wd.ok){
+        scored++;
+        // Show score in supervisor card
+        const shortName=sup.split('.')[1]?.trim()||sup;
+        const el=document.querySelector(`[data-sup="${sup}"] .report-score`);
+        if(el){
+          el.textContent=`${scoreLabel.split(' ')[0]} ${pct}%`;
+          el.style.color=pct>=85?'#1D9E75':pct>=40?'#BA7517':'#A32D2D';
+        }
+      }
     }
 
-    btn.textContent=`✓ ${scored} scored`; btn.style.background='#1D9E75';
-    setTimeout(()=>{btn.textContent='⚡ Score Reports';btn.style.background='#1A1A2E';btn.disabled=false;load();},2000);
+    btn.textContent=`✓ ${scored} scored`;
+    btn.style.background='#1D9E75';
+    setTimeout(()=>{
+      btn.textContent='⚡ Score Reports';
+      btn.style.background='#1A1A2E';
+      btn.disabled=false;
+      load();
+    },2000);
   }catch(e){
     console.error(e);
-    btn.textContent='Error: '+e.message.substring(0,20); btn.disabled=false;
+    btn.textContent='Err: '+e.message.substring(0,25);
+    btn.disabled=false;
   }
 }
 
@@ -406,7 +454,7 @@ async function load(){
     document.getElementById('sup-grid').innerHTML=SUPS.map(s=>{
       const rep=todayReports.find(p=>getProp(p,'Supervisor')===s);
       const hi=rep&&getProp(rep,'Issues Found');
-      return`<div class="sup-card"><div class="sup-name">${s}</div>${rep?`<span class="badge ${hi?'b-no':'b-ok'}">${hi?'⚠ Issues':'Submitted'}</span>`:'<span class="badge b-warn">Pending</span>'}</div>`;
+      return`<div class="sup-card" data-sup="${s}"><div class="sup-name">${s}</div>${rep?`<span class="badge ${hi?'b-no':'b-ok'}">${hi?'⚠ Issues':'Submitted'}</span><span class="report-score" style="font-size:10px;margin-left:6px;color:#888">${getProp(rep,'Report Score')||''}</span>`:'<span class="badge b-warn">Pending</span>'}</div>`;
     }).join('');
 
     // === ROTATION AWARENESS: build absence map per person per day ===
