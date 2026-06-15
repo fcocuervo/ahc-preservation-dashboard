@@ -274,7 +274,7 @@ async function scoreReports(){
 
   const today = toStr(new Date());
 
-  // Get current week Sat-Thu window
+  // Current week Sat-Thu window
   const dow = new Date().getDay();
   const diff = dow===6?0:dow+1;
   const weekSat = new Date(); weekSat.setDate(weekSat.getDate()-diff);
@@ -283,89 +283,94 @@ async function scoreReports(){
   const weekEnd = toStr(weekThu);
 
   try{
-    // 1. Query ALL reports this week (to check BBS/SOC weekly completion)
+    // 1. Query ALL reports this week — to detect weekly activities completed
     const rWeek = await fetch('/api/notion',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        dbId: 'b4d8bf6ea1074dd4844ec6968a848b54',
-        filter: { and:[
-          { property:'Date', date:{ on_or_after: weekStart }},
-          { property:'Date', date:{ on_or_before: weekEnd }}
-        ]}
-      })
+      body: JSON.stringify({ dbId:'b4d8bf6ea1074dd4844ec6968a848b54' })
     });
     const weekData = await rWeek.json();
-    const weekPages = weekData.results||[];
+    const weekPages = (weekData.results||[]).filter(p=>{
+      const d = p.properties?.Date?.date?.start||'';
+      return d>=weekStart && d<=weekEnd;
+    });
 
-    // Build BBS/SOC completion map per supervisor (did they complete it at ANY point this week?)
-    const bbsCompletedThisWeek = {};
+    // Weekly completion map per supervisor
+    const weeklyMap = {};
     weekPages.forEach(p=>{
-      const sup = p.properties?.Supervisor?.select?.name;
-      const bbs = p.properties?.['BBS / SOC']?.select?.name;
-      if(sup && bbs==='Completed') bbsCompletedThisWeek[sup]=true;
+      const sup = p.properties?.Supervisor?.select?.name; if(!sup) return;
+      if(!weeklyMap[sup]) weeklyMap[sup]={bbs:false,meetings:false,walkthroughLCS:false,walkthroughVendors:false};
+      if(p.properties?.['BBS / SOC']?.select?.name==='Completed') weeklyMap[sup].bbs=true;
+      if(p.properties?.['Meetings / Braintrust Attendance']?.checkbox===true) weeklyMap[sup].meetings=true;
+      if(p.properties?.['Walkthrough with LCS / OWR / PMC']?.checkbox===true) weeklyMap[sup].walkthroughLCS=true;
+      if(p.properties?.['Walkthrough with Vendors']?.checkbox===true) weeklyMap[sup].walkthroughVendors=true;
     });
 
-    // 2. Score TODAY's reports
-    const rToday = await fetch('/api/notion',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        dbId: 'b4d8bf6ea1074dd4844ec6968a848b54',
-        filter: { property:'Date', date:{ equals: today }}
-      })
+    // 2. Get yesterday's reports (Okbah evaluates previous day)
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+    const yesterdayStr = toStr(yesterday);
+    const evalPages = weekPages.filter(p=>{
+      const d = p.properties?.Date?.date?.start||'';
+      return d===yesterdayStr || d===today; // score both yesterday and today if present
     });
-    const todayData = await rToday.json();
-    const todayPages = todayData.results||[];
 
-    if(todayPages.length===0){
-      btn.textContent='No reports today'; btn.disabled=false;
+    if(evalPages.length===0){
+      btn.textContent='No reports to score'; btn.disabled=false;
       setTimeout(()=>{btn.textContent='⚡ Score Reports';btn.disabled=false;},2000);
       return;
     }
 
+    // 3. Score each report
+    // Daily activities (8 pts max):
+    //   Daily Area Inspection Completed = 3 pts
+    //   EasyPlant Validation Completed  = 3 pts
+    //   General Observations >20 chars  = 1 pt
+    //   Photos - Routine Activities     = 1 pt
+    // Weekly bonus (4 pts max, prorated to this report):
+    //   BBS/SOC Completed this week     = +2 pts
+    //   Meetings attended this week     = +1 pt
+    //   Walkthrough LCS/OWR/PMC        = +1 pt
+    // Total max = 12 pts
+
     let scored=0;
-    for(const page of todayPages){
+    for(const page of evalPages){
       const p = page.properties||{};
       const sup = p.Supervisor?.select?.name||'';
+      const wk = weeklyMap[sup]||{};
 
-      // Core daily score (6 pts max)
-      let pts=0;
-      if(p['Daily Area Inspection']?.select?.name==='Completed') pts+=2;
-      if(p['EasyPlant Validation']?.select?.name==='Completed') pts+=2;
-      const obs=p['General Observations']?.rich_text?.[0]?.plain_text||'';
-      if(obs.length>20) pts+=1;
+      // Daily score (8 pts)
+      let daily=0;
+      if(p['Daily Area Inspection']?.select?.name==='Completed') daily+=3;
+      if(p['EasyPlant Validation']?.select?.name==='Completed') daily+=3;
+      const obs=p['General Observations']?.rich_text?.[0]?.plain_text||
+                p['General Observations']?.text||'';
+      if((typeof obs==='string'?obs:'').length>20) daily+=1;
       const photos=p['Photos - Routine Activities']?.files||[];
-      if(photos.length>0) pts+=1;
+      if(photos.length>0) daily+=1;
 
-      // Weekly BBS/SOC bonus (+1 if completed at any point this week)
-      if(bbsCompletedThisWeek[sup]) pts+=1;
+      // Weekly bonus (4 pts)
+      let weekly=0;
+      if(wk.bbs) weekly+=2;
+      if(wk.meetings) weekly+=1;
+      if(wk.walkthroughLCS||wk.walkthroughVendors) weekly+=1;
 
-      // Semaphore (7 pts max)
-      const pct=Math.round(pts/7*100);
+      const total=daily+weekly;
+      const pct=Math.round(total/12*100);
       let scoreLabel;
       if(pct>=85) scoreLabel='🟢 Green — 85%+';
       else if(pct>=40) scoreLabel='🟡 Orange — 40-84%';
       else scoreLabel='🔴 Red — Below 40%';
 
-      // Write to Notion
+      // Write to Notion with correct field name
       const wr=await fetch('/api/notion',{
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
           action:'updatePage',
           pageId:page.id,
-          properties:{'Report Score':{select:{name:scoreLabel}}}
+          properties:{'🔒 Score (Coordinator Only)':{select:{name:scoreLabel}}}
         })
       });
       const wd=await wr.json();
-      if(wd.ok){
-        scored++;
-        // Show score in supervisor card
-        const shortName=sup.split('.')[1]?.trim()||sup;
-        const el=document.querySelector(`[data-sup="${sup}"] .report-score`);
-        if(el){
-          el.textContent=`${scoreLabel.split(' ')[0]} ${pct}%`;
-          el.style.color=pct>=85?'#1D9E75':pct>=40?'#BA7517':'#A32D2D';
-        }
-      }
+      if(wd.ok) scored++;
     }
 
     btn.textContent=`✓ ${scored} scored`;
@@ -377,7 +382,7 @@ async function scoreReports(){
       load();
     },2000);
   }catch(e){
-    console.error(e);
+    console.error('scoreReports error:',e);
     btn.textContent='Err: '+e.message.substring(0,25);
     btn.disabled=false;
   }
