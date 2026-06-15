@@ -337,14 +337,21 @@ async function scoreReports(){
       const sup = p.Supervisor?.select?.name||'';
       const wk = weeklyMap[sup]||{};
 
-      // Daily score (8 pts)
+      // Daily score (8 pts max)
       let daily=0;
-      if(p['Daily Area Inspection']?.select?.name==='Completed') daily+=3;
-      if(p['EasyPlant Validation']?.select?.name==='Completed') daily+=3;
-      const obs=p['General Observations']?.rich_text?.[0]?.plain_text||
-                p['General Observations']?.text||'';
+      const dai = p['Daily Area Inspection']?.select?.name||'';
+      if(dai==='Completed'||dai==='B04') daily+=3;
+      else if(dai==='In Progress') daily+=1.5;
+
+      const easy = p['EasyPlant Validation']?.select?.name||'';
+      if(easy==='Completed') daily+=3;
+      else if(easy==='In Progress') daily+=1.5;
+
+      const obs = p['General Observations']?.rich_text?.[0]?.plain_text
+                ||p['General Observations']?.text||'';
       if((typeof obs==='string'?obs:'').length>20) daily+=1;
-      const photos=p['Photos - Routine Activities']?.files||[];
+
+      const photos = p['Photos - Routine Activities']?.files||[];
       if(photos.length>0) daily+=1;
 
       // Weekly bonus (4 pts)
