@@ -147,7 +147,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
           <div class="panel-title" style="margin-bottom:2px">Leader of the Week</div>
-          <div style="font-size:10px;color:#888">Evaluación habilitada sábados · requiere semáforo completo</div>
+          <div style="font-size:10px;color:#888">Evaluation unlocks Saturdays · requires full semaphore scoring</div>
         </div>
         <span id="medals-week-label" style="font-size:11px;color:#888"></span>
       </div>
@@ -179,7 +179,7 @@ const DB = {
 };
 const SUPS = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
 const DAYS = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
-let weekEvalRevealed = false; // se resetea al recargar la página; se activa al presionar "Evaluar Semana"
+let weekEvalRevealed = false; // resets on page reload; set true when "Evaluate Week" is clicked
 
 function toStr(d){return d.toISOString().split('T')[0]}
 function getWeekDates(){
@@ -197,7 +197,7 @@ function badge(v){
   return'<span class="badge b-na">N/A</span>';
 }
 function scoreBadge(label){
-  if(!label) return '<span class="badge b-warn" style="margin-left:6px">Sin calificar</span>';
+  if(!label) return '<span class="badge b-warn" style="margin-left:6px">Not scored</span>';
   let cls='b-na';
   if(label.includes('Green')) cls='b-ok';
   else if(label.includes('Orange')) cls='b-warn';
@@ -696,26 +696,26 @@ async function load(){
     } else if(!isSaturdayToday){
       document.getElementById('medals-content').innerHTML=`
         <div class="empty" style="text-align:left;padding:10px 0">
-          La evaluación semanal se habilita los sábados, para calificar la semana anterior (${weekLabel}).
+          Weekly evaluation unlocks on Saturdays, to score last week (${weekLabel}).
         </div>`;
     } else if(!allScored){
       const uniqueMissing=[...new Set(missingScores)];
       document.getElementById('medals-content').innerHTML=`
         <div style="padding:6px 0">
           <button disabled style="font-size:12px;padding:7px 16px;color:#aaa;background:#F0F0F0;border:none;border-radius:6px;cursor:not-allowed;font-weight:500">
-            🦅 Evaluar Semana
+            🦅 Evaluate Week
           </button>
           <div style="font-size:11px;color:#A32D2D;margin-top:8px">
-            Faltan ${missingScores.length} reporte(s) por calificar (semáforo pendiente de Okbah): ${uniqueMissing.join(', ')}
+            Missing ${missingScores.length} report(s) to score (semaphore pending from Okbah): ${uniqueMissing.join(', ')}
           </div>
         </div>`;
     } else if(!weekEvalRevealed){
       document.getElementById('medals-content').innerHTML=`
         <div style="padding:6px 0">
           <button onclick="revealWeekEval()" style="font-size:12px;padding:7px 16px;color:#fff;background:#1A1A2E;border:none;border-radius:6px;cursor:pointer;font-weight:500">
-            🦅 Evaluar Semana
+            🦅 Evaluate Week
           </button>
-          <div style="font-size:11px;color:#1D9E75;margin-top:8px">Todos los reportes de la semana ya tienen semáforo. Listo para evaluar.</div>
+          <div style="font-size:11px;color:#1D9E75;margin-top:8px">All reports this week have a semaphore score. Ready to evaluate.</div>
         </div>`;
     } else if(!winner||winner.corePct===0){
       document.getElementById('medals-content').innerHTML='<div class="empty">No performance data for last week yet</div>';
