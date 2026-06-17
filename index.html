@@ -86,7 +86,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="panel">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="panel-title" style="margin-bottom:0">Supervisor status — today</div>
-      <button id="score-btn" onclick="scoreReports()" style="font-size:11px;padding:4px 12px;background:#1A1A2E;color:#fff;border:none;border-radius:6px;cursor:pointer">⚡ Score Reports</button>
     </div>
     <div class="sup-grid" id="sup-grid">
       <div class="sup-card"><div class="sup-name">M. Abdelhamid</div><span class="badge b-warn">Loading</span></div>
@@ -136,8 +135,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
     </div>
     <table class="tbl">
-      <thead><tr><th>System</th><th>WT Date</th><th>Valves</th><th>Equipment</th><th>Instruments</th><th>Preserved By</th><th>Reviewed By</th><th>Replied</th></tr></thead>
-      <tbody id="mcwt-body"><tr><td colspan="8" class="empty">Loading...</td></tr></tbody>
+      <thead><tr><th>System</th><th>WT Date</th><th>Description</th><th>Valves</th><th>Equipment</th><th>Instruments</th><th>Preserved By</th><th>Reviewed By</th><th>Replied</th></tr></thead>
+      <tbody id="mcwt-body"><tr><td colspan="9" class="empty">Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -148,7 +147,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
           <div class="panel-title" style="margin-bottom:2px">Leader of the Week</div>
-          <div style="font-size:10px;color:#888">Best score last week · Confirm every Saturday</div>
+          <div style="font-size:10px;color:#888">Evaluación habilitada sábados · requiere semáforo completo</div>
         </div>
         <span id="medals-week-label" style="font-size:11px;color:#888"></span>
       </div>
@@ -180,6 +179,7 @@ const DB = {
 };
 const SUPS = ['M. Abdelhamid','F. Emad','P. Badr','H. Khalil'];
 const DAYS = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
+let weekEvalRevealed = false; // se resetea al recargar la página; se activa al presionar "Evaluar Semana"
 
 function toStr(d){return d.toISOString().split('T')[0]}
 function getWeekDates(){
@@ -195,6 +195,14 @@ function badge(v){
   if(v==='Rotation Out')return'<span class="badge b-no">Out</span>';
   if(v==='Rotation In')return'<span class="badge b-ok">In</span>';
   return'<span class="badge b-na">N/A</span>';
+}
+function scoreBadge(label){
+  if(!label) return '<span class="badge b-warn" style="margin-left:6px">Sin calificar</span>';
+  let cls='b-na';
+  if(label.includes('Green')) cls='b-ok';
+  else if(label.includes('Orange')) cls='b-warn';
+  else if(label.includes('Red')) cls='b-no';
+  return `<span class="badge ${cls}" style="margin-left:6px">${label}</span>`;
 }
 
 async function queryDB(dbId){
@@ -268,133 +276,6 @@ function downloadPDF(){
   }, 200);
 }
 
-async function scoreReports(){
-  const btn = document.getElementById('score-btn');
-  btn.textContent='Scoring...'; btn.disabled=true;
-
-  const today = toStr(new Date());
-
-  // Current week Sat-Thu window
-  const dow = new Date().getDay();
-  const diff = dow===6?0:dow+1;
-  const weekSat = new Date(); weekSat.setDate(weekSat.getDate()-diff);
-  const weekThu = new Date(weekSat); weekThu.setDate(weekSat.getDate()+5);
-  const weekStart = toStr(weekSat);
-  const weekEnd = toStr(weekThu);
-
-  try{
-    // 1. Query ALL reports this week — to detect weekly activities completed
-    const rWeek = await fetch('/api/notion',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ dbId:'b4d8bf6ea1074dd4844ec6968a848b54' })
-    });
-    const weekData = await rWeek.json();
-    const weekPages = (weekData.results||[]).filter(p=>{
-      const d = p.properties?.Date?.date?.start||'';
-      return d>=weekStart && d<=weekEnd;
-    });
-
-    // Weekly completion map per supervisor
-    const weeklyMap = {};
-    weekPages.forEach(p=>{
-      const sup = p.properties?.Supervisor?.select?.name; if(!sup) return;
-      if(!weeklyMap[sup]) weeklyMap[sup]={bbs:false,meetings:false,walkthroughLCS:false,walkthroughVendors:false};
-      if(p.properties?.['BBS / SOC']?.select?.name==='Completed') weeklyMap[sup].bbs=true;
-      if(p.properties?.['Meetings / Braintrust Attendance']?.checkbox===true) weeklyMap[sup].meetings=true;
-      if(p.properties?.['Walkthrough with LCS / OWR / PMC']?.checkbox===true) weeklyMap[sup].walkthroughLCS=true;
-      if(p.properties?.['Walkthrough with Vendors']?.checkbox===true) weeklyMap[sup].walkthroughVendors=true;
-    });
-
-    // 2. Get yesterday's reports (Okbah evaluates previous day)
-    const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
-    const yesterdayStr = toStr(yesterday);
-    const evalPages = weekPages.filter(p=>{
-      const d = p.properties?.Date?.date?.start||'';
-      return d===yesterdayStr || d===today; // score both yesterday and today if present
-    });
-
-    if(evalPages.length===0){
-      btn.textContent='No reports to score'; btn.disabled=false;
-      setTimeout(()=>{btn.textContent='⚡ Score Reports';btn.disabled=false;},2000);
-      return;
-    }
-
-    // 3. Score each report
-    // Daily activities (8 pts max):
-    //   Daily Area Inspection Completed = 3 pts
-    //   EasyPlant Validation Completed  = 3 pts
-    //   General Observations >20 chars  = 1 pt
-    //   Photos - Routine Activities     = 1 pt
-    // Weekly bonus (4 pts max, prorated to this report):
-    //   BBS/SOC Completed this week     = +2 pts
-    //   Meetings attended this week     = +1 pt
-    //   Walkthrough LCS/OWR/PMC        = +1 pt
-    // Total max = 12 pts
-
-    let scored=0;
-    for(const page of evalPages){
-      const p = page.properties||{};
-      const sup = p.Supervisor?.select?.name||'';
-      const wk = weeklyMap[sup]||{};
-
-      // Daily score (8 pts max)
-      let daily=0;
-      const dai = p['Daily Area Inspection']?.select?.name||'';
-      if(dai==='Completed'||dai==='B04') daily+=3;
-      else if(dai==='In Progress') daily+=1.5;
-
-      const easy = p['EasyPlant Validation']?.select?.name||'';
-      if(easy==='Completed') daily+=3;
-      else if(easy==='In Progress') daily+=1.5;
-
-      const obs = p['General Observations']?.rich_text?.[0]?.plain_text
-                ||p['General Observations']?.text||'';
-      if((typeof obs==='string'?obs:'').length>20) daily+=1;
-
-      const photos = p['Photos - Routine Activities']?.files||[];
-      if(photos.length>0) daily+=1;
-
-      // Weekly bonus (4 pts)
-      let weekly=0;
-      if(wk.bbs) weekly+=2;
-      if(wk.meetings) weekly+=1;
-      if(wk.walkthroughLCS||wk.walkthroughVendors) weekly+=1;
-
-      const total=daily+weekly;
-      const pct=Math.round(total/12*100);
-      let scoreLabel;
-      if(pct>=85) scoreLabel='🟢 Green — 85%+';
-      else if(pct>=40) scoreLabel='🟡 Orange — 40-84%';
-      else scoreLabel='🔴 Red — Below 40%';
-
-      // Write to Notion with correct field name
-      const wr=await fetch('/api/notion',{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          action:'updatePage',
-          pageId:page.id,
-          properties:{'🔒 Score (Coordinator Only)':{select:{name:scoreLabel}}}
-        })
-      });
-      const wd=await wr.json();
-      if(wd.ok) scored++;
-    }
-
-    btn.textContent=`✓ ${scored} scored`;
-    btn.style.background='#1D9E75';
-    setTimeout(()=>{
-      btn.textContent='⚡ Score Reports';
-      btn.style.background='#1A1A2E';
-      btn.disabled=false;
-      load();
-    },2000);
-  }catch(e){
-    console.error('scoreReports error:',e);
-    btn.textContent='Err: '+e.message.substring(0,25);
-    btn.disabled=false;
-  }
-}
-
 async function load(){
   const btn = document.getElementById('refresh-btn');
   btn.disabled=true;
@@ -466,7 +347,8 @@ async function load(){
     document.getElementById('sup-grid').innerHTML=SUPS.map(s=>{
       const rep=todayReports.find(p=>getProp(p,'Supervisor')===s);
       const hi=rep&&getProp(rep,'Issues Found');
-      return`<div class="sup-card" data-sup="${s}"><div class="sup-name">${s}</div>${rep?`<span class="badge ${hi?'b-no':'b-ok'}">${hi?'⚠ Issues':'Submitted'}</span><span class="report-score" style="font-size:10px;margin-left:6px;color:#888">${getProp(rep,'Report Score')||''}</span>`:'<span class="badge b-warn">Pending</span>'}</div>`;
+      const semaphore=rep?getProp(rep,'🔒 Score (Coordinator Only)'):null;
+      return`<div class="sup-card" data-sup="${s}"><div class="sup-name">${s}</div>${rep?`<span class="badge ${hi?'b-no':'b-ok'}">${hi?'⚠ Issues':'Submitted'}</span>${scoreBadge(semaphore)}`:'<span class="badge b-warn">Pending</span>'}</div>`;
     }).join('');
 
     // === ROTATION AWARENESS: build absence map per person per day ===
@@ -647,7 +529,7 @@ async function load(){
 
     const mb = document.getElementById('mcwt-body');
     mb.innerHTML = mcwtSorted.length===0
-      ? '<tr><td colspan="8" class="empty">No records found</td></tr>'
+      ? '<tr><td colspan="9" class="empty">No records found</td></tr>'
       : mcwtSorted.map(p=>{
           const replied = getProp(p,'Replied Email to Handover');
           const rowBg = replied==='Y' ? '' : 'background:#FFFBF0';
@@ -656,6 +538,7 @@ async function load(){
           return`<tr style="${rowBg}">
             <td style="font-weight:500;font-size:11px">${shortSys}</td>
             <td style="font-size:11px">${getProp(p,'Walkthrough Date')||'—'}</td>
+            <td style="font-size:11px">${getProp(p,'System Description')||'<span style="color:#aaa">—</span>'}</td>
             <td>${badge(getProp(p,'Valves Preserved'))}</td>
             <td>${badge(getProp(p,'Equipment Preserved'))}</td>
             <td>${badge(getProp(p,'Instruments Preserved'))}</td>
@@ -776,6 +659,21 @@ async function load(){
     // === Render: Leader of the Week ===
     document.getElementById('medals-week-label').textContent = weekLabel;
 
+    // Condición de habilitación: hoy es sábado Y todos los Daily Reports de la
+    // semana pasada (Sáb-Jue, excluyendo ausentes por rotación/recovery/holiday)
+    // ya tienen semáforo (🔒 Score) asignado por Okbah.
+    const isSaturdayToday = today.getDay()===6;
+    const missingScores = [];
+    lastWeekAllDays.forEach(ds=>{
+      MEMBERS.forEach(m=>{
+        if(absenceMap[m].has(ds)) return; // ausente, no cuenta
+        const rep = supPages.find(p=>getProp(p,'Supervisor')===m && getProp(p,'Date')===ds);
+        const score = rep ? getProp(rep,'🔒 Score (Coordinator Only)') : null;
+        if(!score) missingScores.push(m.split('.')[1]?.trim()||m);
+      });
+    });
+    const allScored = missingScores.length===0;
+
     if(alreadyConfirmed){
       const conf=confirmedThisWeek[0];
       const confName=(getProp(conf,'Team Member')||'').split('.')[1]?.trim()||'';
@@ -794,6 +692,30 @@ async function load(){
             <span style="color:${s.member===winner?.member?'#1A1A2E':'#888'};font-weight:${s.member===winner?.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
             <span style="color:#888">Core ${s.corePct}% · Bonus ${s.bonusScore}/3</span>
           </div>`).join('')}
+        </div>`;
+    } else if(!isSaturdayToday){
+      document.getElementById('medals-content').innerHTML=`
+        <div class="empty" style="text-align:left;padding:10px 0">
+          La evaluación semanal se habilita los sábados, para calificar la semana anterior (${weekLabel}).
+        </div>`;
+    } else if(!allScored){
+      const uniqueMissing=[...new Set(missingScores)];
+      document.getElementById('medals-content').innerHTML=`
+        <div style="padding:6px 0">
+          <button disabled style="font-size:12px;padding:7px 16px;color:#aaa;background:#F0F0F0;border:none;border-radius:6px;cursor:not-allowed;font-weight:500">
+            🦅 Evaluar Semana
+          </button>
+          <div style="font-size:11px;color:#A32D2D;margin-top:8px">
+            Faltan ${missingScores.length} reporte(s) por calificar (semáforo pendiente de Okbah): ${uniqueMissing.join(', ')}
+          </div>
+        </div>`;
+    } else if(!weekEvalRevealed){
+      document.getElementById('medals-content').innerHTML=`
+        <div style="padding:6px 0">
+          <button onclick="revealWeekEval()" style="font-size:12px;padding:7px 16px;color:#fff;background:#1A1A2E;border:none;border-radius:6px;cursor:pointer;font-weight:500">
+            🦅 Evaluar Semana
+          </button>
+          <div style="font-size:11px;color:#1D9E75;margin-top:8px">Todos los reportes de la semana ya tienen semáforo. Listo para evaluar.</div>
         </div>`;
     } else if(!winner||winner.corePct===0){
       document.getElementById('medals-content').innerHTML='<div class="empty">No performance data for last week yet</div>';
@@ -903,6 +825,11 @@ async function load(){
 
 load();
 
+function revealWeekEval(){
+  weekEvalRevealed = true;
+  load();
+}
+
 async function confirmMedal(member, medalType, week, coreScore, bonusScore, weekStart){
   const btn = event.target;
   btn.disabled=true; btn.textContent='Saving...';
@@ -931,6 +858,7 @@ async function confirmMedal(member, medalType, week, coreScore, bonusScore, week
     if(data.ok){
       btn.textContent='✓ Saved';
       btn.style.background='#1D9E75';
+      weekEvalRevealed = false;
       setTimeout(()=>load(),1000);
     } else {
       console.error('Notion error:', data);
