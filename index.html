@@ -78,7 +78,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="metrics">
     <div class="metric"><div class="metric-label">Reports today</div><div class="metric-value" id="m1">—</div><div class="metric-sub">of 4 supervisors</div></div>
     <div class="metric"><div class="metric-label">Pending today</div><div class="metric-value" id="m2">—</div><div class="metric-sub" id="m2s">—</div></div>
-    <div class="metric"><div class="metric-label">Active issues</div><div class="metric-value" id="m3">—</div><div class="metric-sub">last 7 days</div></div>
+    <div class="metric"><div class="metric-label">Active issues</div><div class="metric-value" id="m3">—</div><div class="metric-sub">unresolved</div></div>
     <div class="metric"><div class="metric-label">In rotation</div><div class="metric-value" id="m4">—</div><div class="metric-sub">this week</div></div>
     <div class="metric"><div class="metric-label">EasyPlant tags</div><div class="metric-value info" id="m5">—</div><div class="metric-sub">latest Lojina</div></div>
   </div>
@@ -107,10 +107,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   <div class="two-col">
     <div class="panel">
-      <div class="panel-title">Issues & findings — last 7 days</div>
+      <div class="panel-title">Active issues — unresolved</div>
       <table class="tbl">
-        <thead><tr><th>Supervisor</th><th>Area</th><th>Finding</th><th>Date</th></tr></thead>
-        <tbody id="issues-body"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody>
+        <thead><tr><th>Supervisor</th><th>Area</th><th>Finding</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody id="issues-body"><tr><td colspan="5" class="empty">Loading...</td></tr></tbody>
       </table>
     </div>
     <div class="panel">
@@ -301,7 +301,7 @@ async function load(){
     const todayStr0 = todayStr;
     const todayReports = supPages.filter(p=>getProp(p,'Date')===todayStr0);
     const weekSupPages = supPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=weekStart&&d<=todayStr0;});
-    const issuePages = supPages.filter(p=>getProp(p,'Issues Found')===true&&getProp(p,'Date')>=sevenAgo);
+    const issuePages = supPages.filter(p=>getProp(p,'Issues Found')===true&&getProp(p,'Issues Solved')!=='Y');
     const weekPerfPages = perfPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=weekStart&&d<=todayStr0;});
     const upcomingRot = rotPages.filter(p=>{
       const start = getProp(p,'Date');
@@ -478,12 +478,13 @@ async function load(){
 
     const ib=document.getElementById('issues-body');
     ib.innerHTML=issuePages.length===0
-      ?'<tr><td colspan="4" class="empty">No issues in last 7 days</td></tr>'
-      :issuePages.slice(0,5).map(p=>`<tr>
+      ?'<tr><td colspan="5" class="empty">No active issues</td></tr>'
+      :issuePages.map(p=>`<tr>
         <td>${getProp(p,'Supervisor')||'—'}</td>
         <td>${getProp(p,'Area')||'—'}</td>
         <td>${getProp(p,'Critical Findings')||'—'}</td>
         <td>${getProp(p,'Date')||'—'}</td>
+        <td><span class="badge b-no">Pending</span></td>
       </tr>`).join('');
 
     const al=document.getElementById('analyst-list');
@@ -542,7 +543,7 @@ async function load(){
             <td>${badge(getProp(p,'Valves Preserved'))}</td>
             <td>${badge(getProp(p,'Equipment Preserved'))}</td>
             <td>${badge(getProp(p,'Instruments Preserved'))}</td>
-            <td style="font-size:11px">${getProp(p,'Preserved By')||'<span style="color:#aaa">—</span>'}</td>
+            <td style="font-size:11px">${getProp(p,'Assigned/Preserved By')||'<span style="color:#aaa">—</span>'}</td>
             <td style="font-size:11px">${getProp(p,'Reviewed By')||'<span style="color:#aaa">—</span>'}</td>
             <td>${badge(replied)}</td>
           </tr>`;
