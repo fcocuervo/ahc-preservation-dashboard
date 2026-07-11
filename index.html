@@ -449,7 +449,8 @@ async function load(){
       return {earned, possible, pct, presentDaysN: presentDays.length, absentDaysN, dayBreakdown, easyPlantDone, bbsDone, bonusScore, fullyAbsent: presentDays.length===0};
     }
     const weekScores = {};
-    MEMBERS.forEach(m=>{ weekScores[m] = computeWeeklyScore(m, workDays); });
+    const workDayStrings = workDays.map(toStr);
+    MEMBERS.forEach(m=>{ weekScores[m] = computeWeeklyScore(m, workDayStrings); });
 
     const doneWorkDays = workDays; // last week is fully complete, no need to filter "up to today"
 
