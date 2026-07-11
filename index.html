@@ -395,21 +395,27 @@ async function load(){
       const absentDaysN = days.length - presentDays.length;
       const dayBreakdown = {};
       let earnedDaily = 0;
+      let reportedDaysN = 0;
       presentDays.forEach(ds=>{
         const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
-        let pts = 0;
-        if(rep){
-          pts += 4; // report submitted
-          if(getProp(rep,'Daily Area Inspection')==='Completed') pts += 4;
-          const photos = rep.properties?.['Photos - Routine Activities']?.files || [];
-          if(photos.length>0) pts += 2;
-          const obs = getProp(rep,'General Observations');
-          if(obs && String(obs).trim().length>0) pts += 2;
+        if(!rep){
+          // No report exists at all for this day — ignore it entirely (not a failure, not counted).
+          // Different from an absence: this day still shows as "no data" in the heatmap, but doesn't
+          // drag the percentage down. Only a report that exists but wasn't scored blocks the Evaluate button.
+          dayBreakdown[ds] = {pts:0, hasReport:false};
+          return;
         }
-        dayBreakdown[ds] = {pts, hasReport: !!rep};
+        reportedDaysN++;
+        let pts = 4; // report submitted
+        if(getProp(rep,'Daily Area Inspection')==='Completed') pts += 4;
+        const photos = rep.properties?.['Photos - Routine Activities']?.files || [];
+        if(photos.length>0) pts += 2;
+        const obs = getProp(rep,'General Observations');
+        if(obs && String(obs).trim().length>0) pts += 2;
+        dayBreakdown[ds] = {pts, hasReport: true};
         earnedDaily += pts;
       });
-      const possibleDaily = presentDays.length*12;
+      const possibleDaily = reportedDaysN*12;
 
       // Weekly EasyPlant credit: daily field Completed at least once, OR an MC Walkthrough system
       // closed this week by this supervisor (substance over label — see AHC manual §11 principle 6-adjacent note)
@@ -687,7 +693,8 @@ async function load(){
       MEMBERS.forEach(m=>{
         if(absenceMap[m].has(ds)) return; // ausente, no cuenta
         const rep = supPages.find(p=>getProp(p,'Supervisor')===m && getProp(p,'Date')===ds);
-        const score = rep ? getProp(rep,'🔒 Score (Coordinator Only)') : null;
+        if(!rep) return; // no existe el reporte — se ignora, no bloquea la evaluación
+        const score = getProp(rep,'🔒 Score (Coordinator Only)');
         if(!score) missingScores.push(m.split('.')[1]?.trim()||m);
       });
     });
