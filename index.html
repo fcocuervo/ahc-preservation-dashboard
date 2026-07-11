@@ -96,7 +96,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
 
   <div class="panel">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0"><div class="panel-title" style="margin-bottom:0">Weekly compliance — this week</div><span id="current-week-label" style="font-size:11px;color:#888"></span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0"><div class="panel-title" style="margin-bottom:0">Weekly compliance — last week</div><span id="current-week-label" style="font-size:11px;color:#888"></span></div>
     <div id="comp-container"><div class="empty">Loading...</div></div>
   </div>
 
@@ -285,6 +285,9 @@ async function load(){
   const today=new Date(), todayStr=toStr(today);
   document.getElementById('dash-date').textContent=today.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const weekDates=getWeekDates(), weekStart=toStr(weekDates[0]);
+  const lastWeekSat0 = new Date(weekDates[0]); lastWeekSat0.setDate(lastWeekSat0.getDate()-7);
+  const lastWeekDates0 = Array.from({length:7},(_,i)=>{const d=new Date(lastWeekSat0);d.setDate(lastWeekSat0.getDate()+i);return d;});
+  const lastWeekStart0 = toStr(lastWeekDates0[0]), lastWeekEnd0 = toStr(lastWeekDates0[6]);
   const sevenAgo=toStr(new Date(today.getTime()-7*24*60*60*1000));
   const nextTwo=toStr(new Date(today.getTime()+14*24*60*60*1000));
 
@@ -302,7 +305,7 @@ async function load(){
     const todayReports = supPages.filter(p=>getProp(p,'Date')===todayStr0);
     const weekSupPages = supPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=weekStart&&d<=todayStr0;});
     const issuePages = supPages.filter(p=>getProp(p,'Issues Found')===true&&getProp(p,'Issues Solved')!=='Y');
-    const weekPerfPages = perfPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=weekStart&&d<=todayStr0;});
+    const weekPerfPages = perfPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=lastWeekStart0&&d<=lastWeekEnd0;});
     const upcomingRot = rotPages.filter(p=>{
       const start = getProp(p,'Date');
       const end = getDateEnd(p,'Date');
@@ -355,7 +358,7 @@ async function load(){
     const MEMBERS = MEMBERS_PRE;
     const ACTS = ['Daily Report Submitted','EasyPlant Validation','Daily Area Inspection','WhatsApp Group Sharing'];
     const ACT_LABELS = ['Report','EasyPlant','Inspection','WhatsApp'];
-    const workDays = weekDates; // Sat-Fri all 6 days, no day excluded
+    const workDays = lastWeekDates0; // Sat-Fri of LAST week (now complete), not the current week which just started
 
     // Map: member -> Set of dates they are absent (rotation/recovery/holiday)
     const absenceMap = {};
@@ -577,8 +580,8 @@ async function load(){
     const weekLabel = `W${String(lastWeekNum).padStart(2,'0')} · ${fmtDate(lastWeekStart)} – ${fmtDate(lastWeekEndLabel)} (medals: Sat-Thu)`;
 
     // Current week label
-    const curWeekNum = getWeekNum(weekStart);
-    const curWeekLabel = `Week ${String(curWeekNum).padStart(2,'0')} · ${fmtDate(weekStart)} – ${fmtDate(toStr(new Date(new Date(weekStart).getTime()+6*86400000)))}`;
+    const curWeekNum = getWeekNum(lastWeekStart0);
+    const curWeekLabel = `Week ${String(curWeekNum).padStart(2,'0')} · ${fmtDate(lastWeekStart0)} – ${fmtDate(lastWeekEnd0)}`;
     const curWeekEl = document.getElementById('current-week-label');
     if(curWeekEl) curWeekEl.textContent = curWeekLabel;
 
@@ -590,7 +593,7 @@ async function load(){
     const lastWeekMap = {};
     MEMBERS.forEach(m=>{lastWeekMap[m]={core:0,corePossible:0,bbs:0,walkthrough:0,meeting:0,absentDays:0};});
 
-    const lastWeekAllDays = Array.from({length:5},(_,i)=>{ // Sat-Thu only, Friday excluded
+    const lastWeekAllDays = Array.from({length:6},(_,i)=>{ // Sat-Thu, 6 days, Friday excluded
       const d=new Date(lastSat); d.setDate(lastSat.getDate()+i); return toStr(d);
     });
     lastWeekAllDays.forEach(ds=>{
