@@ -285,9 +285,13 @@ async function load(){
   const today=new Date(), todayStr=toStr(today);
   document.getElementById('dash-date').textContent=today.toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const weekDates=getWeekDates(), weekStart=toStr(weekDates[0]);
-  const lastWeekSat0 = new Date(weekDates[0]); lastWeekSat0.setDate(lastWeekSat0.getDate()-7);
-  const lastWeekDates0 = Array.from({length:7},(_,i)=>{const d=new Date(lastWeekSat0);d.setDate(lastWeekSat0.getDate()+i);return d;});
-  const lastWeekStart0 = toStr(lastWeekDates0[0]), lastWeekEnd0 = toStr(lastWeekDates0[6]);
+  const lastWeekSat = new Date(weekDates[0]); lastWeekSat.setDate(lastWeekSat.getDate()-7);
+  const lastWeekThu = new Date(lastWeekSat); lastWeekThu.setDate(lastWeekSat.getDate()+5); // Sat..Thu = 6 days, Friday excluded (official Águila window)
+  const lastWeekFri = new Date(lastWeekSat); lastWeekFri.setDate(lastWeekSat.getDate()+6); // full week end, for display labels only
+  const lastWeekStart0 = toStr(lastWeekSat);
+  const lastWeekEnd0 = toStr(lastWeekThu);
+  const lastWeekEndLabel0 = toStr(lastWeekFri);
+  const lastWeekDates0 = Array.from({length:6},(_,i)=>{const d=new Date(lastWeekSat);d.setDate(lastWeekSat.getDate()+i);return d;}); // Sat,Sun,Mon,Tue,Wed,Thu
   const sevenAgo=toStr(new Date(today.getTime()-7*24*60*60*1000));
   const nextTwo=toStr(new Date(today.getTime()+14*24*60*60*1000));
 
@@ -305,7 +309,8 @@ async function load(){
     const todayReports = supPages.filter(p=>getProp(p,'Date')===todayStr0);
     const weekSupPages = supPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=weekStart&&d<=todayStr0;});
     const issuePages = supPages.filter(p=>getProp(p,'Issues Found')===true&&getProp(p,'Issues Solved')!=='Y');
-    const weekPerfPages = perfPages.filter(p=>{const d=getProp(p,'Date');return d&&d>=lastWeekStart0&&d<=lastWeekEnd0;});
+    // (Performance Tracking is still queried/kept updated as a manual reference log — see rituales_cockpit.md —
+    // but scoring for Compliance and the Águila now reads directly from Daily Reports, see computeWeeklyScore above.)
     const upcomingRot = rotPages.filter(p=>{
       const start = getProp(p,'Date');
       const end = getDateEnd(p,'Date');
@@ -356,9 +361,7 @@ async function load(){
 
     // === ROTATION AWARENESS: build absence map per person per day ===
     const MEMBERS = MEMBERS_PRE;
-    const ACTS = ['Daily Report Submitted','EasyPlant Validation','Daily Area Inspection','WhatsApp Group Sharing'];
-    const ACT_LABELS = ['Report','EasyPlant','Inspection','WhatsApp'];
-    const workDays = lastWeekDates0; // Sat-Fri of LAST week (now complete), not the current week which just started
+    const workDays = lastWeekDates0; // Sat-Thu of LAST week (now complete) — official Águila window, matches medal calc exactly
 
     // Map: member -> Set of dates they are absent (rotation/recovery/holiday)
     const absenceMap = {};
@@ -382,50 +385,92 @@ async function load(){
       });
     });
 
-    // Build compliance map excluding absent days
-    const compMap={};
-    MEMBERS.forEach(m=>{
-      compMap[m]={days:{},totals:{report:0,easy:0,insp:0,wa:0},absentDays:0};
-      workDays.forEach(d=>{
-        const ds=toStr(d);
-        const absent=absenceMap[m].has(ds);
-        compMap[m].days[ds]={report:false,easy:false,insp:false,wa:false,logged:false,absent};
+    // === SHARED WEEKLY SCORE FORMULA (100 pts) — used by BOTH Weekly Compliance and the Águila medal calc ===
+    // Reports(24) + DAI(24) + Photos(12) + Observations(12) = 72 pts across present days (12/day: 4+4+2+2)
+    // + EasyPlant ≥1x/week (14) + BBS/SOC ≥1x/week (14) = 28 pts
+    // "Substance over label": an MC Walkthrough system closed this week (by that supervisor, with
+    // Equipment/Valves/Instruments preserved) counts as EasyPlant-equivalent work, same as a daily EasyPlant tag validation.
+    function computeWeeklyScore(member, days){
+      const presentDays = days.filter(ds=>!absenceMap[member].has(ds));
+      const absentDaysN = days.length - presentDays.length;
+      const dayBreakdown = {};
+      let earnedDaily = 0;
+      presentDays.forEach(ds=>{
+        const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
+        let pts = 0;
+        if(rep){
+          pts += 4; // report submitted
+          if(getProp(rep,'Daily Area Inspection')==='Completed') pts += 4;
+          const photos = rep.properties?.['Photos - Routine Activities']?.files || [];
+          if(photos.length>0) pts += 2;
+          const obs = getProp(rep,'General Observations');
+          if(obs && String(obs).trim().length>0) pts += 2;
+        }
+        dayBreakdown[ds] = {pts, hasReport: !!rep};
+        earnedDaily += pts;
       });
-    });
-    weekPerfPages.forEach(p=>{
-      const m=getProp(p,'Team Member'); if(!m||!compMap[m])return;
-      const d=getProp(p,'Date'); if(!d)return;
-      if(!compMap[m].days[d])compMap[m].days[d]={report:false,easy:false,insp:false,wa:false,logged:false,absent:false};
-      compMap[m].days[d].logged=true;
-      if(getProp(p,'Daily Report Submitted')==='Y'){compMap[m].days[d].report=true;compMap[m].totals.report++;}
-      if(getProp(p,'EasyPlant Validation')==='Y'){compMap[m].days[d].easy=true;compMap[m].totals.easy++;}
-      if(getProp(p,'Daily Area Inspection')==='Y'){compMap[m].days[d].insp=true;compMap[m].totals.insp++;}
-      if(getProp(p,'WhatsApp Group Sharing')==='Y'){compMap[m].days[d].wa=true;compMap[m].totals.wa++;}
-    });
+      const possibleDaily = presentDays.length*12;
 
-    const doneWorkDays = workDays.filter(d=>toStr(d)<=todayStr0); // only days up to today
+      // Weekly EasyPlant credit: daily field Completed at least once, OR an MC Walkthrough system
+      // closed this week by this supervisor (substance over label — see AHC manual §11 principle 6-adjacent note)
+      let easyPlantDone = presentDays.some(ds=>{
+        const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
+        return rep && getProp(rep,'EasyPlant Validation')==='Completed';
+      });
+      if(!easyPlantDone && mcwtPages){
+        easyPlantDone = mcwtPages.some(p=>{
+          const by = getProp(p,'Assigned/Preserved By');
+          if(by!==member) return false;
+          const pdate = getProp(p,'Preservation Date');
+          if(!pdate || pdate<lastWeekStart0 || pdate>lastWeekEnd0) return false;
+          return getProp(p,'Equipment Preserved')==='Y' || getProp(p,'Valves Preserved')==='Y' || getProp(p,'Instruments Preserved')==='Y';
+        });
+      }
+      const bbsDone = presentDays.some(ds=>{
+        const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
+        return rep && getProp(rep,'BBS / SOC')==='Completed';
+      });
 
-    // === SECTION B: Score % per person (only present days) ===
+      const earned = earnedDaily + (easyPlantDone?14:0) + (bbsDone?14:0);
+      const possible = possibleDaily + (presentDays.length>0?28:0);
+      const pct = possible>0 ? Math.round(earned/possible*100) : null;
+
+      // Bonus (separate from core 100-pt score): walkthrough / meeting attendance this week
+      const walkthroughDone = presentDays.some(ds=>{
+        const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
+        return rep && (getProp(rep,'Walkthrough with LCS / OWR / PMC')===true || getProp(rep,'Walkthrough with Vendors')===true);
+      });
+      const meetingDone = presentDays.some(ds=>{
+        const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
+        return rep && getProp(rep,'Meetings / Braintrust Attendance')===true;
+      });
+      const bonusScore = (walkthroughDone?1:0) + (meetingDone?1:0);
+
+      return {earned, possible, pct, presentDaysN: presentDays.length, absentDaysN, dayBreakdown, easyPlantDone, bbsDone, bonusScore, fullyAbsent: presentDays.length===0};
+    }
+    const weekScores = {};
+    MEMBERS.forEach(m=>{ weekScores[m] = computeWeeklyScore(m, workDays); });
+
+    const doneWorkDays = workDays; // last week is fully complete, no need to filter "up to today"
+
+    // === SECTION B: Score % per person — same 100-pt formula as the Águila ===
     const scoreHTML = MEMBERS.map(m=>{
-      const presentDays = doneWorkDays.filter(d=>!absenceMap[m].has(toStr(d)));
-      const absentDays = doneWorkDays.filter(d=>absenceMap[m].has(toStr(d)));
-      const t=compMap[m].totals;
-      const total = t.report+t.easy+t.insp+t.wa;
-      const possible = presentDays.length*4;
-      const pct = possible>0 ? Math.round(total/possible*100) : null;
+      const ws = weekScores[m];
+      const pct = ws.pct;
       const col = pct===null?'#888':pct>=80?'#1D9E75':pct>=50?'#BA7517':'#A32D2D';
-      const absentNote = absentDays.length>0?`<span style="font-size:10px;color:#378ADD;margin-left:6px">${absentDays.length}d absent</span>`:'';
+      const absentNote = ws.absentDaysN>0?`<span style="font-size:10px;color:#378ADD;margin-left:6px">${ws.absentDaysN}d absent</span>`:'';
+      const weeklyBadges = ws.presentDaysN>0 ? `<span style="font-size:9px;color:${ws.easyPlantDone?'#1D9E75':'#A32D2D'};margin-left:6px">EasyPlant ${ws.easyPlantDone?'✓':'✗'}</span><span style="font-size:9px;color:${ws.bbsDone?'#1D9E75':'#A32D2D'};margin-left:4px">BBS/SOC ${ws.bbsDone?'✓':'✗'}</span>` : '';
       return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:.5px solid #F0F0F0">
         <div style="font-size:12px;font-weight:500;min-width:110px">${m.split('.')[1]?.trim()||m}${absentNote}</div>
         <div style="flex:1;background:#F0F0F0;border-radius:4px;height:8px;overflow:hidden">
           ${pct!==null?`<div style="width:${pct}%;height:100%;background:${col};border-radius:4px;transition:width .3s"></div>`:''}
         </div>
         <div style="font-size:12px;font-weight:500;min-width:40px;color:${col}">${pct!==null?pct+'%':'N/A'}</div>
-        <div style="font-size:10px;color:#888">${total}/${possible}</div>
+        <div style="font-size:10px;color:#888">${ws.earned}/${ws.possible}${weeklyBadges}</div>
       </div>`;
     }).join('');
 
-    // === SECTION A: Heatmap ===
+    // === SECTION A: Heatmap — daily points out of 12 (Report 4 + DAI 4 + Photos 2 + Observations 2) ===
     const heatHTML = `<div style="margin-top:14px">
       <div style="display:flex;gap:4px;margin-bottom:4px;margin-left:118px">
         ${doneWorkDays.map(d=>{
@@ -438,23 +483,24 @@ async function load(){
           <div style="font-size:11px;min-width:114px;color:#555">${m.split('.')[1]?.trim()||m}</div>
           ${doneWorkDays.map(d=>{
             const ds=toStr(d);
-            const day=compMap[m].days[ds];
-            if(day&&day.absent){
+            if(absenceMap[m].has(ds)){
               return`<div title="Absent (rotation/recovery)" style="width:28px;height:28px;border-radius:4px;background:#E3F2FD;border:.5px solid #90CAF9;display:flex;align-items:center;justify-content:center;font-size:9px;color:#1565C0">off</div>`;
             }
-            if(!day||!day.logged){
-              return`<div style="width:28px;height:28px;border-radius:4px;background:#F5F5F5;border:.5px solid #E5E5E5"></div>`;
+            const day = weekScores[m].dayBreakdown[ds];
+            if(!day||!day.hasReport){
+              return`<div title="No report" style="width:28px;height:28px;border-radius:4px;background:#F5F5F5;border:.5px solid #E5E5E5"></div>`;
             }
-            const score=(day.report?1:0)+(day.easy?1:0)+(day.insp?1:0)+(day.wa?1:0);
-            const bg=score===4?'#1D9E75':score>=2?'#BA7517':'#A32D2D';
-            return`<div title="${score}/4 activities" style="width:28px;height:28px;border-radius:4px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:500">${score}</div>`;
+            const score = day.pts;
+            const bg=score===12?'#1D9E75':score>=6?'#BA7517':'#A32D2D';
+            return`<div title="${score}/12 pts" style="width:28px;height:28px;border-radius:4px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:500">${score}</div>`;
           }).join('')}
         </div>`;
       }).join('')}
       <div style="display:flex;gap:10px;margin-top:8px;margin-left:118px;flex-wrap:wrap">
-        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#1D9E75;border-radius:2px;margin-right:3px"></span>4/4</span>
-        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#BA7517;border-radius:2px;margin-right:3px"></span>2-3/4</span>
-        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#A32D2D;border-radius:2px;margin-right:3px"></span>0-1/4</span>
+        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#1D9E75;border-radius:2px;margin-right:3px"></span>12/12</span>
+        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#BA7517;border-radius:2px;margin-right:3px"></span>6-11/12</span>
+
+        <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#A32D2D;border-radius:2px;margin-right:3px"></span>0-5/12</span>
         <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#E3F2FD;border:.5px solid #90CAF9;border-radius:2px;margin-right:3px"></span>Absent</span>
         <span style="font-size:10px;color:#888"><span style="display:inline-block;width:10px;height:10px;background:#F5F5F5;border:.5px solid #E5E5E5;border-radius:2px;margin-right:3px"></span>No data</span>
       </div>
@@ -559,12 +605,9 @@ async function load(){
     // 🥇 Gold Medal = 4 🦅 (skipping rotation weeks)
     // 🏆 Trophy = 4 🥇 (skipping rotation weeks)
 
-    const lastSat = new Date(weekDates[0]); lastSat.setDate(lastSat.getDate()-7);
-    const lastThu = new Date(lastSat); lastThu.setDate(lastSat.getDate()+5); // Sat..Thu = 5 days, Friday excluded
-    const lastFri = new Date(lastSat); lastFri.setDate(lastSat.getDate()+6); // for week label display only
-    const lastWeekStart = toStr(lastSat);
-    const lastWeekEnd = toStr(lastThu); // medals only consider Sat-Thu (not all come on Friday)
-    const lastWeekEndLabel = toStr(lastFri); // full week range for display
+    const lastWeekStart = lastWeekStart0;
+    const lastWeekEnd = lastWeekEnd0; // medals only consider Sat-Thu (not all come on Friday)
+    const lastWeekEndLabel = lastWeekEndLabel0; // full week range for display
 
     // Week numbering anchored to W24 = 2026-06-06 (Sat) per Cockpit system
     const WEEK_ANCHOR = new Date('2026-06-06T00:00:00Z');
@@ -585,42 +628,12 @@ async function load(){
     const curWeekEl = document.getElementById('current-week-label');
     if(curWeekEl) curWeekEl.textContent = curWeekLabel;
 
-    // Last week performance
-    const lastWeekPerf = perfPages.filter(p=>{
-      const d=getProp(p,'Date'); return d&&d>=lastWeekStart&&d<=lastWeekEnd;
-    });
-
-    const lastWeekMap = {};
-    MEMBERS.forEach(m=>{lastWeekMap[m]={core:0,corePossible:0,bbs:0,walkthrough:0,meeting:0,absentDays:0};});
-
-    const lastWeekAllDays = Array.from({length:6},(_,i)=>{ // Sat-Thu, 6 days, Friday excluded
-      const d=new Date(lastSat); d.setDate(lastSat.getDate()+i); return toStr(d);
-    });
-    lastWeekAllDays.forEach(ds=>{
-      MEMBERS.forEach(m=>{if(absenceMap[m].has(ds)) lastWeekMap[m].absentDays++;});
-    });
-
-    lastWeekPerf.forEach(p=>{
-      const m=getProp(p,'Team Member'); if(!m||!lastWeekMap[m])return;
-      const d=getProp(p,'Date'); if(!d||absenceMap[m].has(d))return;
-      lastWeekMap[m].corePossible+=4;
-      if(getProp(p,'Daily Report Submitted')==='Y') lastWeekMap[m].core++;
-      if(getProp(p,'EasyPlant Validation')==='Y') lastWeekMap[m].core++;
-      if(getProp(p,'Daily Area Inspection')==='Y') lastWeekMap[m].core++;
-      if(getProp(p,'WhatsApp Group Sharing')==='Y') lastWeekMap[m].core++;
-      if(getProp(p,'BBS and SOC')==='Y') lastWeekMap[m].bbs=1;
-      if(getProp(p,'Attending Walkthrough')==='Y') lastWeekMap[m].walkthrough=1;
-      if(getProp(p,'Weekly Meeting')==='Y') lastWeekMap[m].meeting=1;
-    });
-
-    // Score and find winner
+    // Score and find winner — same weekScores computed once above (shared with Weekly Compliance)
     const scored = MEMBERS.map(m=>{
-      const lw=lastWeekMap[m];
-      const fullyAbsent = lw.corePossible===0; // absent all Sat-Thu (rotation/recovery/holiday)
-      const corePct=lw.corePossible>0?Math.round(lw.core/lw.corePossible*100):0;
-      const bonusScore=fullyAbsent?0:(lw.bbs+lw.walkthrough+lw.meeting);
-      const totalScore=corePct*10+bonusScore;
-      return {member:m,corePct,bonusScore,totalScore,absentDays:lw.absentDays,fullyAbsent};
+      const ws = weekScores[m];
+      const corePct = ws.pct ?? 0;
+      const totalScore = corePct*10 + ws.bonusScore;
+      return {member:m, corePct, bonusScore:ws.bonusScore, totalScore, absentDays:ws.absentDaysN, fullyAbsent:ws.fullyAbsent, easyPlantDone:ws.easyPlantDone, bbsDone:ws.bbsDone};
     }).sort((a,b)=>b.totalScore-a.totalScore);
 
     // Eligible = present at least 1 day this week (Sat-Thu)
@@ -668,7 +681,8 @@ async function load(){
     // ya tienen semáforo (🔒 Score) asignado por Okbah.
     const isSaturdayToday = today.getDay()===6;
     const missingScores = [];
-    lastWeekAllDays.forEach(ds=>{
+    workDays.forEach(d=>{
+      const ds=toStr(d);
       MEMBERS.forEach(m=>{
         if(absenceMap[m].has(ds)) return; // ausente, no cuenta
         const rep = supPages.find(p=>getProp(p,'Supervisor')===m && getProp(p,'Date')===ds);
