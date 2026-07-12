@@ -369,7 +369,7 @@ async function load(){
     rotPages.forEach(p=>{
       const member = getProp(p,'Team Member');
       const etype = getProp(p,'Event Type');
-      const absent = ['Rotation','Recovery Day','National Holiday','Long Week','Medical Leave','Day Off'];
+      const absent = ['Rotation','Recovery Day','National Holiday','Long Week','Medical Leave'];
       if(!absent.includes(etype)) return;
       const start = getProp(p,'Date');
       const end = getDateEnd(p,'Date') || start;
@@ -390,6 +390,20 @@ async function load(){
     // + EasyPlant ≥1x/week (14) + BBS/SOC ≥1x/week (14) = 28 pts
     // "Substance over label": an MC Walkthrough system closed this week (by that supervisor, with
     // Equipment/Valves/Instruments preserved) counts as EasyPlant-equivalent work, same as a daily EasyPlant tag validation.
+    // Photos can arrive two ways: (1) native Notion file upload (pre-storage-limit reports), or
+    // (2) a text mention of the Drive 31 — Preservation folder in General Observations / Critical
+    // Findings / Walkthrough Notes (the policy since July 2026, since Notion's Free plan hit its
+    // file-size limit — see manual §9). Both count as evidence of photos submitted.
+    const DRIVE31_PATTERN = /31[\s-]*(preservation|drive)|drive[\s-]*31|folder[\s-]*31/i;
+    function hasPhotoEvidence(rep){
+      const files = rep.properties?.['Photos - Routine Activities']?.files || [];
+      if(files.length>0) return true;
+      const textFields = ['General Observations','Critical Findings','Walkthrough Notes'];
+      return textFields.some(f=>{
+        const v = getProp(rep,f);
+        return v && DRIVE31_PATTERN.test(String(v));
+      });
+    }
     function computeWeeklyScore(member, days){
       const presentDays = days.filter(ds=>!absenceMap[member].has(ds));
       const absentDaysN = days.length - presentDays.length;
@@ -400,13 +414,12 @@ async function load(){
         // A day with NO justified absence in the Team Rotation Calendar and NO report submitted
         // counts as a zero — it stays in the denominator and drags the percentage down, same as a
         // report that exists but scored poorly. Only a calendar-registered absence (Rotation, Medical
-        // Leave, Day Off, etc.) removes a day from the denominator entirely — see absenceMap above.
+        // Leave, Recovery Day, etc.) removes a day from the denominator entirely — see absenceMap above.
         let pts = 0;
         if(rep){
           pts += 4; // report submitted
           if(getProp(rep,'Daily Area Inspection')==='Completed') pts += 4;
-          const photos = rep.properties?.['Photos - Routine Activities']?.files || [];
-          if(photos.length>0) pts += 2;
+          if(hasPhotoEvidence(rep)) pts += 2;
           const obs = getProp(rep,'General Observations');
           if(obs && String(obs).trim().length>0) pts += 2;
         }
