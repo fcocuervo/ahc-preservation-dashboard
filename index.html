@@ -205,13 +205,27 @@ function scoreBadge(label){
   return `<span class="badge ${cls}" style="margin-left:6px">${label}</span>`;
 }
 
-async function queryDB(dbId){
-  const r = await fetch('/api/notion',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({dbId})
-  });
-  const d = await r.json();
+async function queryDB(dbId, label){
+  let r;
+  try{
+    r = await fetch('/api/notion',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({dbId})
+    });
+  }catch(networkErr){
+    throw new Error(`Network error reaching /api/notion for ${label||dbId}: ${networkErr.message}`);
+  }
+  let d;
+  const rawText = await r.text();
+  try{
+    d = JSON.parse(rawText);
+  }catch(parseErr){
+    throw new Error(`${label||dbId}: server returned non-JSON (HTTP ${r.status}). First 200 chars: ${rawText.substring(0,200)}`);
+  }
+  if(!r.ok || d.object==='error'){
+    throw new Error(`${label||dbId}: Notion error (HTTP ${r.status}) — ${d.message||d.error||'unknown error'}${d.code?` [${d.code}]`:''}`);
+  }
   return d.results || [];
 }
 
@@ -297,12 +311,12 @@ async function load(){
 
   try{
     const [supPages, perfPages, rotPages, analystPages, mcwtPages, achievPages] = await Promise.all([
-      queryDB(DB.supervisors),
-      queryDB(DB.performance),
-      queryDB(DB.rotation),
-      queryDB(DB.analyst),
-      queryDB(DB.mcwt),
-      queryDB(DB.achievements)
+      queryDB(DB.supervisors, 'Supervisor Daily Reports'),
+      queryDB(DB.performance, 'Performance Tracking'),
+      queryDB(DB.rotation, 'Team Rotation Calendar'),
+      queryDB(DB.analyst, 'Data Analyst Weekly Reports'),
+      queryDB(DB.mcwt, 'MC Walkthrough'),
+      queryDB(DB.achievements, 'Achievement Registry')
     ]);
 
     const todayStr0 = todayStr;
@@ -855,7 +869,9 @@ async function load(){
     hallBody.innerHTML = standingsHTML + recentHTML;
 
   }catch(e){
-    document.getElementById('error-bar').style.display='block';
+    const eb = document.getElementById('error-bar');
+    eb.textContent = 'Could not load data from Notion — ' + (e && e.message ? e.message : String(e));
+    eb.style.display='block';
     console.error(e);
   }
 
