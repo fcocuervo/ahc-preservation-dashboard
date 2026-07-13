@@ -667,8 +667,12 @@ async function load(){
     const scored = MEMBERS.map(m=>{
       const ws = weekScores[m];
       const corePct = ws.pct ?? 0;
-      const totalScore = corePct*10 + ws.bonusScore;
-      return {member:m, corePct, bonusScore:ws.bonusScore, totalScore, absentDays:ws.absentDaysN, fullyAbsent:ws.fullyAbsent, easyPlantDone:ws.easyPlantDone, bbsDone:ws.bbsDone};
+      // Rank by raw points earned, not percentage. A justified absence still isn't penalized (no
+      // zero forced on that day), but it also can't let someone with fewer working days out-rank
+      // someone who worked more days and produced more — percentage alone rewards small denominators,
+      // raw points reward actual volume of work. Bonus stays a small tiebreaker only.
+      const totalScore = ws.earned*10 + ws.bonusScore;
+      return {member:m, corePct, earned:ws.earned, possible:ws.possible, bonusScore:ws.bonusScore, totalScore, absentDays:ws.absentDaysN, fullyAbsent:ws.fullyAbsent, easyPlantDone:ws.easyPlantDone, bbsDone:ws.bbsDone};
     }).sort((a,b)=>b.totalScore-a.totalScore);
 
     // Eligible = present at least 1 day this week (Sat-Thu)
@@ -740,11 +744,11 @@ async function load(){
             <div style="font-size:11px;color:#888;margin-top:2px">Leader of the Week · Core ${confScore}% · Confirmed ✓</div>
           </div>
         </div>
-        <div style="margin-top:10px;font-size:11px;color:#888">All scores this week:</div>
+        <div style="margin-top:10px;font-size:11px;color:#888">All scores this week — ranked by points earned:</div>
         <div style="margin-top:4px">${scored.map(s=>`
           <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:.5px solid #F5F5F5;font-size:12px">
             <span style="color:${s.member===winner?.member?'#1A1A2E':'#888'};font-weight:${s.member===winner?.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
-            <span style="color:#888">Core ${s.corePct}% · Bonus ${s.bonusScore}/3</span>
+            <span style="color:#888">${s.earned}/${s.possible} pts (${s.corePct}%) · Bonus ${s.bonusScore}/2</span>
           </div>`).join('')}
         </div>`;
     } else if(!isSundayToday){
@@ -782,7 +786,7 @@ async function load(){
           <span style="font-size:36px">🦅</span>
           <div style="flex:1">
             <div style="font-size:16px;font-weight:500">${shortName}${absentNote}</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">Core ${winner.corePct}% · Bonus ${winner.bonusScore}/3</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${winner.earned}/${winner.possible} pts (${winner.corePct}%) · Bonus ${winner.bonusScore}/2</div>
             ${tieNote}
           </div>
           <button onclick="confirmMedal('${winner.member}','Leader of the Week','${weekKey}',${winner.corePct},${winner.bonusScore},'${lastWeekStart}')"
@@ -790,11 +794,11 @@ async function load(){
             🦅 Confirm
           </button>
         </div>
-        <div style="font-size:11px;color:#888;margin-bottom:4px">All scores:</div>
+        <div style="font-size:11px;color:#888;margin-bottom:4px">All scores — ranked by points earned, not %:</div>
         ${scored.map(s=>`
           <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:.5px solid #F5F5F5;font-size:12px">
             <span style="color:${s.member===winner.member?'#1A1A2E':'#888'};font-weight:${s.member===winner.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
-            <span style="color:#888">${s.fullyAbsent?'Absent all week (rotation/recovery)':`Core ${s.corePct}% · Bonus ${s.bonusScore}/3`}</span>
+            <span style="color:#888">${s.fullyAbsent?'Absent all week (rotation/recovery)':`${s.earned}/${s.possible} pts (${s.corePct}%) · Bonus ${s.bonusScore}/2`}</span>
           </div>`).join('')}`;
     }
 
