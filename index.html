@@ -485,20 +485,22 @@ async function load(){
 
     const doneWorkDays = workDays; // last week is fully complete, no need to filter "up to today"
 
-    // === SECTION B: Score % per person — same 100-pt formula as the Águila ===
-    const scoreHTML = MEMBERS.map(m=>{
+    // === SECTION B: Score per person — same 100-pt formula as the Águila, ranked by points earned ===
+    const scoreHTML = [...MEMBERS].sort((a,b)=>(weekScores[b].earned)-(weekScores[a].earned)).map((m,idx)=>{
       const ws = weekScores[m];
       const pct = ws.pct;
       const col = pct===null?'#888':pct>=80?'#1D9E75':pct>=50?'#BA7517':'#A32D2D';
       const absentNote = ws.absentDaysN>0?`<span style="font-size:10px;color:#378ADD;margin-left:6px">${ws.absentDaysN}d absent</span>`:'';
       const weeklyBadges = ws.presentDaysN>0 ? `<span style="font-size:9px;color:${ws.easyPlantDone?'#1D9E75':'#A32D2D'};margin-left:6px">EasyPlant ${ws.easyPlantDone?'✓':'✗'}</span><span style="font-size:9px;color:${ws.bbsDone?'#1D9E75':'#A32D2D'};margin-left:4px">BBS/SOC ${ws.bbsDone?'✓':'✗'}</span>` : '';
+      const rankBadge = `<span style="font-size:10px;color:#aaa;min-width:16px;display:inline-block">#${idx+1}</span>`;
       return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:.5px solid #F0F0F0">
-        <div style="font-size:12px;font-weight:500;min-width:110px">${m.split('.')[1]?.trim()||m}${absentNote}</div>
+        ${rankBadge}
+        <div style="font-size:12px;font-weight:500;min-width:100px">${m.split('.')[1]?.trim()||m}${absentNote}</div>
         <div style="flex:1;background:#F0F0F0;border-radius:4px;height:8px;overflow:hidden">
           ${pct!==null?`<div style="width:${pct}%;height:100%;background:${col};border-radius:4px;transition:width .3s"></div>`:''}
         </div>
-        <div style="font-size:12px;font-weight:500;min-width:40px;color:${col}">${pct!==null?pct+'%':'N/A'}</div>
-        <div style="font-size:10px;color:#888">${ws.earned}/${ws.possible}${weeklyBadges}</div>
+        <div style="font-size:13px;font-weight:600;min-width:52px;color:${col}">${ws.earned}/${ws.possible}</div>
+        <div style="font-size:10px;color:#888">${pct!==null?pct+'%':'N/A'}${weeklyBadges}</div>
       </div>`;
     }).join('');
 
