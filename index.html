@@ -412,7 +412,10 @@ async function load(){
     function hasPhotoEvidence(rep){
       const files = rep.properties?.['Photos - Routine Activities']?.files || [];
       if(files.length>0) return true;
-      const textFields = ['General Observations','Critical Findings','Walkthrough Notes'];
+      // Some supervisors don't mention "Drive 31" in their own Observations text even when they
+      // did send photos — the coordinator confirms via Coordinator Notes in that case (verified
+      // directly with the supervisor), which counts as valid evidence too.
+      const textFields = ['General Observations','Critical Findings','Walkthrough Notes','Coordinator Notes'];
       return textFields.some(f=>{
         const v = getProp(rep,f);
         return v && DRIVE31_PATTERN.test(String(v));
