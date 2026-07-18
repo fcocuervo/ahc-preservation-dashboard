@@ -452,12 +452,17 @@ async function load(){
         return rep && getProp(rep,'EasyPlant Validation')==='Completed';
       });
       if(!easyPlantDone && mcwtPages){
+        // A system is considered "closed" for EasyPlant-equivalent credit when it has a
+        // Preservation Date within the week and is assigned to this member — regardless of the
+        // Equipment/Valves/Instruments Y/N/NA marks, since some systems (piperacks, structures)
+        // have no physical equipment to preserve and correctly show N/A across the board even
+        // when genuinely closed. Preservation Date being set is the real signal of closure.
         easyPlantDone = mcwtPages.some(p=>{
           const by = getProp(p,'Assigned/Preserved By');
           if(by!==member) return false;
           const pdate = getProp(p,'Preservation Date');
           if(!pdate || pdate<lastWeekStart0 || pdate>lastWeekEnd0) return false;
-          return getProp(p,'Equipment Preserved')==='Y' || getProp(p,'Valves Preserved')==='Y' || getProp(p,'Instruments Preserved')==='Y';
+          return true;
         });
       }
       const bbsDone = presentDays.some(ds=>{
