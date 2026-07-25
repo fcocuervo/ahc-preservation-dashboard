@@ -352,10 +352,15 @@ async function load(){
 
     // In Rotation: members absent TODAY due to Rotation (from calendar, not Performance Tracking)
     // absenceMap is built below — pre-compute using rotPages directly for today
-    const inRotToday = MEMBERS_PRE.filter(m=>{
+    // In Rotation: anyone absent TODAY (Rotation, Recovery Day, Medical Leave, Long Week) — includes
+    // Okbah (coordinator) too, not just the 4 field supervisors, since this panel is about visibility
+    // of who's away, not about scoring eligibility (which is MEMBERS_PRE-only).
+    const AWAY_TYPES = ['Rotation','Recovery Day','Medical Leave','Long Week'];
+    const ALL_TEAM_FOR_AWAY = [...MEMBERS_PRE, 'A. Okbah'];
+    const inRotToday = ALL_TEAM_FOR_AWAY.filter(m=>{
       return rotPages.some(p=>{
         if(getProp(p,'Team Member')!==m && getProp(p,'Team Member')!=='All Team') return false;
-        if(getProp(p,'Event Type')!=='Rotation') return false;
+        if(!AWAY_TYPES.includes(getProp(p,'Event Type'))) return false;
         const s=getProp(p,'Date'), e=getDateEnd(p,'Date')||s;
         return s&&e&&todayStr0>=s&&todayStr0<=e;
       });
