@@ -13,7 +13,6 @@ module.exports = async function handler(req, res) {
 
   // UPDATE PAGE action — used for writing Report Score to existing pages
   if (action === 'updatePage') {
-    const { pageId, properties } = body;
     if (!pageId || !properties) return res.status(400).json({ error: 'Missing pageId or properties' });
     try {
       const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
@@ -57,24 +56,41 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  // DEFAULT: QUERY action
+  // DEFAULT: QUERY action — fully paginated, so no records are silently dropped once any
+  // database grows past 100 rows (this was a real bug: recent records, like a system closed
+  // this week in MC Walkthrough, could fall outside the first 100 and never be counted).
   if (!dbId) return res.status(400).json({ error: 'Missing dbId' });
 
   try {
-    const response = await fetch(
-      `https://api.notion.com/v1/databases/${dbId}/query`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${NOTION_TOKEN}`,
-          'Notion-Version': '2022-06-28',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ page_size: 100, ...(filter ? { filter } : {}) })
-      }
-    );
-    const data = await response.json();
-    return res.status(200).json(data);
+    let allResults = [];
+    let cursor = undefined;
+    let hasMore = true;
+    let pages = 0;
+    while (hasMore && pages < 20) { // hard cap of 2000 rows as a sanity guard
+      const response = await fetch(
+        `https://api.notion.com/v1/databases/${dbId}/query`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${NOTION_TOKEN}`,
+            'Notion-Version': '2022-06-28',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            page_size: 100,
+            ...(cursor ? { start_cursor: cursor } : {}),
+            ...(filter ? { filter } : {})
+          })
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) return res.status(response.status).json({ object: 'error', status: response.status, code: data.code, message: data.message || 'Notion error' });
+      allResults = allResults.concat(data.results || []);
+      hasMore = !!data.has_more;
+      cursor = data.next_cursor;
+      pages++;
+    }
+    return res.status(200).json({ object: 'list', results: allResults, has_more: false });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
