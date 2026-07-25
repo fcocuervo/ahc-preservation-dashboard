@@ -147,7 +147,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
           <div class="panel-title" style="margin-bottom:2px">Leader of the Week</div>
-          <div style="font-size:10px;color:#888">Evaluation unlocks Sundays · requires full semaphore scoring</div>
+          <div style="font-size:10px;color:#888">Evaluation unlocks Saturdays · requires full semaphore scoring</div>
         </div>
         <span id="medals-week-label" style="font-size:11px;color:#888"></span>
       </div>
@@ -767,7 +767,7 @@ async function load(){
     // Condición de habilitación: hoy es sábado Y todos los Daily Reports de la
     // semana pasada (Sáb-Jue, excluyendo ausentes por rotación/recovery/holiday)
     // ya tienen semáforo (🔒 Score) asignado por Okbah.
-    const isSundayToday = today.getDay()===0; // Saturday = adjustment day for last week's data; Sunday = evaluation day
+    const isSaturdayToday = today.getDay()===6; // Saturday = evaluation day for last week's data
     const missingScores = [];
     workDays.forEach(d=>{
       const ds=toStr(d);
@@ -800,10 +800,10 @@ async function load(){
             <span style="color:#888">${s.earned}/${s.possible} pts (${s.corePct}%) · Bonus ${s.bonusScore}/2</span>
           </div>`).join('')}
         </div>`;
-    } else if(!isSundayToday){
+    } else if(!isSaturdayToday){
       document.getElementById('medals-content').innerHTML=`
         <div class="empty" style="text-align:left;padding:10px 0">
-          Weekly evaluation unlocks on Sundays, to score last week (${weekLabel}).
+          Weekly evaluation unlocks on Saturdays, to score last week (${weekLabel}).
         </div>`;
     } else if(!allScored){
       const uniqueMissing=[...new Set(missingScores)];
