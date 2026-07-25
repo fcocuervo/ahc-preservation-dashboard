@@ -465,8 +465,18 @@ async function load(){
         easyPlantDone = mcwtPages.some(p=>{
           const by = getProp(p,'Assigned/Preserved By');
           if(by!==member) return false;
-          const pdate = getProp(p,'Preservation Date');
-          if(!pdate || pdate<lastWeekStart0 || pdate>lastWeekEnd0) return false;
+          // Preservation Date is the primary signal, but some genuinely closed systems have it left
+          // blank by mistake — when that happens, fall back to Walkthrough Date, but only if the
+          // closure is otherwise clearly real (Evidence Sent = Y and at least one of
+          // Equipment/Valves/Instruments Preserved = Y), to avoid crediting a system that's merely
+          // been walked through but not actually preserved yet.
+          let d = getProp(p,'Preservation Date');
+          if(!d){
+            const evidenceSent = getProp(p,'Evidence Sent')===true;
+            const anyPreserved = getProp(p,'Equipment Preserved')==='Y' || getProp(p,'Valves Preserved')==='Y' || getProp(p,'Instruments Preserved')==='Y';
+            if(evidenceSent && anyPreserved) d = getProp(p,'Walkthrough Date');
+          }
+          if(!d || d<lastWeekStart0 || d>lastWeekEnd0) return false;
           return true;
         });
       }
