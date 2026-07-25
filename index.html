@@ -410,9 +410,14 @@ async function load(){
     // file-size limit — see manual §9). Both count as evidence of photos submitted.
     const DRIVE31_PATTERN = /31[\s-]*(preservation|drive)|drive[\s-]*31|folder[\s-]*31/i;
     function hasPhotoEvidence(rep){
+      // Primary signal (Jul 2026 onward): supervisors now submit reports via the new web app,
+      // which has a dedicated "Photos Uploaded to Drive 31" checkbox — this is the authoritative
+      // source when present, faster and more reliable than parsing free text.
+      if(getProp(rep,'Photos Uploaded to Drive 31')===true) return true;
       const files = rep.properties?.['Photos - Routine Activities']?.files || [];
       if(files.length>0) return true;
-      // Some supervisors don't mention "Drive 31" in their own Observations text even when they
+      // Fallback for older reports (pre-checkbox) or cases where the checkbox wasn't used —
+      // some supervisors don't mention "Drive 31" in their own Observations text even when they
       // did send photos — the coordinator confirms via Coordinator Notes in that case (verified
       // directly with the supervisor), which counts as valid evidence too.
       const textFields = ['General Observations','Critical Findings','Walkthrough Notes','Coordinator Notes'];
