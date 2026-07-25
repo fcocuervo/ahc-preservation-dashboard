@@ -428,7 +428,8 @@ async function load(){
     }
     function computeWeeklyScore(member, days){
       const presentDays = days.filter(ds=>!absenceMap[member].has(ds));
-      const absentDaysN = days.length - presentDays.length;
+      const absentDays = days.filter(ds=>absenceMap[member].has(ds));
+      const absentDaysN = absentDays.length;
       const dayBreakdown = {};
       let earnedDaily = 0;
       presentDays.forEach(ds=>{
@@ -450,9 +451,27 @@ async function load(){
       });
       const possibleDaily = presentDays.length*12;
 
-      // Weekly EasyPlant credit: daily field Completed at least once, OR an MC Walkthrough system
-      // closed this week by this supervisor (substance over label — see AHC manual §11 principle 6-adjacent note)
-      let easyPlantDone = presentDays.some(ds=>{
+      // Voluntary work on an excused day (holiday, rotation, recovery, etc.) is recognized as pure
+      // bonus: added to earned, never to possible. This rewards showing up when nobody had to,
+      // without penalizing anyone who legitimately took the day — their denominator is untouched.
+      let holidayBonusEarned = 0;
+      absentDays.forEach(ds=>{
+        const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
+        if(!rep) return;
+        let pts = 4;
+        if(getProp(rep,'Daily Area Inspection')==='Completed') pts += 4;
+        if(hasPhotoEvidence(rep)) pts += 2;
+        const obs = getProp(rep,'General Observations');
+        if(obs && String(obs).trim().length>0) pts += 2;
+        dayBreakdown[ds] = {pts, hasReport: true, voluntary: true};
+        holidayBonusEarned += pts;
+      });
+      earnedDaily += holidayBonusEarned;
+
+      // Weekly EasyPlant credit: daily field Completed at least once (present OR a voluntary day
+      // worked on an excused day), OR an MC Walkthrough system closed this week by this supervisor
+      // (substance over label — see AHC manual §11 principle 6-adjacent note)
+      let easyPlantDone = days.some(ds=>{
         const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
         return rep && getProp(rep,'EasyPlant Validation')==='Completed';
       });
@@ -480,7 +499,7 @@ async function load(){
           return true;
         });
       }
-      const bbsDone = presentDays.some(ds=>{
+      const bbsDone = days.some(ds=>{
         const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
         return rep && getProp(rep,'BBS / SOC')==='Completed';
       });
@@ -500,7 +519,7 @@ async function load(){
       });
       const bonusScore = (walkthroughDone?1:0) + (meetingDone?1:0);
 
-      return {earned, possible, pct, presentDaysN: presentDays.length, absentDaysN, dayBreakdown, easyPlantDone, bbsDone, bonusScore, fullyAbsent: presentDays.length===0};
+      return {earned, possible, pct, presentDaysN: presentDays.length, absentDaysN, dayBreakdown, easyPlantDone, bbsDone, bonusScore, holidayBonusEarned, fullyAbsent: presentDays.length===0};
     }
     const weekScores = {};
     const workDayStrings = workDays.map(toStr);
@@ -514,11 +533,12 @@ async function load(){
       const pct = ws.pct;
       const col = pct===null?'#888':pct>=80?'#1D9E75':pct>=50?'#BA7517':'#A32D2D';
       const absentNote = ws.absentDaysN>0?`<span style="font-size:10px;color:#378ADD;margin-left:6px">${ws.absentDaysN}d absent</span>`:'';
+      const holidayNote = ws.holidayBonusEarned>0?`<span style="font-size:10px;color:#1D9E75;margin-left:6px">+${ws.holidayBonusEarned} worked excused day</span>`:'';
       const weeklyBadges = ws.presentDaysN>0 ? `<span style="font-size:9px;color:${ws.easyPlantDone?'#1D9E75':'#A32D2D'};margin-left:6px">EasyPlant ${ws.easyPlantDone?'✓':'✗'}</span><span style="font-size:9px;color:${ws.bbsDone?'#1D9E75':'#A32D2D'};margin-left:4px">BBS/SOC ${ws.bbsDone?'✓':'✗'}</span>` : '';
       const rankBadge = `<span style="font-size:10px;color:#aaa;min-width:16px;display:inline-block">#${idx+1}</span>`;
       return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:.5px solid #F0F0F0">
         ${rankBadge}
-        <div style="font-size:12px;font-weight:500;min-width:100px">${m.split('.')[1]?.trim()||m}${absentNote}</div>
+        <div style="font-size:12px;font-weight:500;min-width:100px">${m.split('.')[1]?.trim()||m}${absentNote}${holidayNote}</div>
         <div style="flex:1;background:#F0F0F0;border-radius:4px;height:8px;overflow:hidden">
           ${pct!==null?`<div style="width:${pct}%;height:100%;background:${col};border-radius:4px;transition:width .3s"></div>`:''}
         </div>
@@ -541,6 +561,10 @@ async function load(){
           ${doneWorkDays.map(d=>{
             const ds=toStr(d);
             if(absenceMap[m].has(ds)){
+              const day = weekScores[m].dayBreakdown[ds];
+              if(day && day.voluntary && day.pts>0){
+                return`<div title="Worked an excused day — +${day.pts} bonus, not counted against anyone else" style="width:28px;height:28px;border-radius:4px;background:#1D9E75;border:.5px solid #1B8A66;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:500">+${day.pts}</div>`;
+              }
               return`<div title="Absent (rotation/recovery)" style="width:28px;height:28px;border-radius:4px;background:#E3F2FD;border:.5px solid #90CAF9;display:flex;align-items:center;justify-content:center;font-size:9px;color:#1565C0">off</div>`;
             }
             const day = weekScores[m].dayBreakdown[ds];
