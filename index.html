@@ -763,8 +763,8 @@ async function load(){
       goldsByMember[m] = memberGolds.length;   // total golds (for display)
     });
 
-    // Trophies = members with 4+ gold medals
-    const trophyMembers = MEMBERS.filter(m=>goldsByMember[m]>=4);
+    // (Trophies are now derived per-member directly from total eagle count via base-4 carrying,
+    // computed inline in the standings table render below — see eagles/golds/trophies there.)
 
     // === Render: Leader of the Week ===
     document.getElementById('medals-week-label').textContent = weekLabel;
@@ -874,26 +874,31 @@ async function load(){
         <tbody>
           ${MEMBERS.map(m=>{
             const shortN=m.split('.')[1]?.trim()||m;
-            const eagles=eaglesByMember[m];
-            const golds=goldsByMember[m];
-            const trophies=Math.floor(golds/4);
-            const eaglesForNextGold=eagles%4;
+            // Display simplification: every 4 total eagle wins compress into 1 medal, every 4
+            // medals compress into 1 trophy (base-4 carrying on the raw win count) — instead of
+            // ever showing a wall of 9+ eagle icons, show the equivalent trophy/medal/eagle mix.
+            // 4 eagles -> 1 medal. 8 -> 2 medals. 12 -> 3 medals. 16 -> 1 trophy. Etc.
+            const totalEagles=eaglesByMember[m];
+            const trophies=Math.floor(totalEagles/16);
+            const remainderAfterTrophies=totalEagles%16;
+            const golds=Math.floor(remainderAfterTrophies/4);
+            const eagles=remainderAfterTrophies%4;
+            const eaglesForNextGold=eagles; // eagles already shown ARE the progress toward next gold
             const goldsForNextTrophy=golds%4;
             // Progress bar toward next milestone
             let progressPct, progressLabel, progressColor;
-            if(trophies>=1){progressPct=100;progressLabel='🏆 Trophy earned';progressColor='#E94560';}
-            else if(golds>=4){progressPct=100;progressLabel='🏆 Trophy pending';progressColor='#E94560';}
-            else if(eagles>0&&golds<4){
-              progressPct=Math.round((goldsForNextTrophy/4)*100)||Math.round((eaglesForNextGold/4)*100);
-              progressLabel=golds>0?`${4-goldsForNextTrophy} 🥇 to trophy`:`${4-eaglesForNextGold} 🦅 to gold`;
+            if(trophies>=1 && remainderAfterTrophies===0){progressPct=100;progressLabel='🏆 Trophy earned';progressColor='#E94560';}
+            else if(totalEagles>0){
+              progressPct=golds>0?Math.round((goldsForNextTrophy/4)*100):Math.round((eaglesForNextGold/4)*100);
+              progressLabel=golds>0?`${4-goldsForNextTrophy===4?0:4-goldsForNextTrophy} 🥇 to trophy`:`${4-eaglesForNextGold} 🦅 to gold`;
               progressColor='#BA7517';
             } else {
               progressPct=0; progressLabel='No eagles yet'; progressColor='#888';
             }
             return`<tr style="border-bottom:.5px solid #F5F5F5">
               <td style="padding:8px 4px;font-weight:500">${shortN}</td>
-              <td style="text-align:center;padding:8px 4px">${'🦅'.repeat(Math.min(eagles,4))}${eagles>4?`+${eagles-4}`:''}</td>
-              <td style="text-align:center;padding:8px 4px">${golds>0?'🥇'.repeat(Math.min(golds,4)):'-'}${golds>4?`+${golds-4}`:''}</td>
+              <td style="text-align:center;padding:8px 4px">${eagles>0?'🦅'.repeat(eagles):'-'}</td>
+              <td style="text-align:center;padding:8px 4px">${golds>0?'🥇'.repeat(golds):'-'}</td>
               <td style="text-align:center;padding:8px 4px">${trophies>0?'🏆'.repeat(trophies):'-'}</td>
               <td style="padding:8px 4px">
                 <div style="display:flex;align-items:center;gap:6px">
