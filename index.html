@@ -989,8 +989,11 @@ async function confirmMedal(member, medalType, week, coreScore, bonusScore, week
           'Week': { rich_text:[{ text:{ content: week } }] },
           'Week Start': { date:{ start: weekStart } },
           'Core Score': { number: coreScore },
-          'Bonus Score': { number: bonusScore },
-          'Confirmed By': { select:{ name: 'F. Cuervo' } }
+          'Bonus Score': { number: bonusScore }
+          // 'Confirmed By' intentionally omitted — the confirming individual is not attributed,
+          // per Francisco's explicit request, to avoid internal friction over who gets credit for
+          // clicking Confirm (which doesn't reflect who actually did the coordination/evaluation
+          // work that week). Medal confirmation stays anonymous by design.
         }
       })
     });
