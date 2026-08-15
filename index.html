@@ -513,18 +513,39 @@ async function load(){
       const possible = possibleDaily + (presentDays.length>0?28:0);
       const pct = possible>0 ? Math.round(earned/possible*100) : null;
 
-      // Bonus (separate from core 100-pt score): walkthrough / meeting attendance this week
-      const walkthroughDone = presentDays.some(ds=>{
-        const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
-        return rep && (getProp(rep,'Walkthrough with LCS / OWR / PMC')===true || getProp(rep,'Walkthrough with Vendors')===true);
-      });
-      const meetingDone = presentDays.some(ds=>{
-        const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
-        return rep && getProp(rep,'Meetings / Braintrust Attendance')===true;
-      });
-      const bonusScore = (walkthroughDone?1:0) + (meetingDone?1:0);
+      // Bonus (separate from core 100-pt score, 0-3, tiebreaker only — never overturns a real
+      // gap in earned points). Primary source: Performance Tracking (Okbah's manual log) —
+      // Attending Walkthrough, Weekly Meeting, Warranty Extension, each worth +1 if "Y" on any
+      // present day this week. Warranty Extension is occasional/random but demanding when it
+      // happens, so it's rewarded as bonus rather than folded into the core 100-pt formula.
+      // Fallback: if Performance Tracking has no records at all for this member this week (Okbah
+      // hasn't logged it yet), fall back to the old Daily-Reports-based signal for walkthrough/
+      // meeting so the bonus doesn't drop to 0 just because the manual log is behind — Warranty
+      // Extension has no Daily Reports equivalent, so it simply contributes 0 in that fallback case.
+      const perfRecordsThisWeek = presentDays
+        .map(ds=>perfPages.find(p=>getProp(p,'Team Member')===member && getProp(p,'Date')===ds))
+        .filter(Boolean);
+      const hasPerfDataThisWeek = perfRecordsThisWeek.length>0;
 
-      return {earned, possible, pct, presentDaysN: presentDays.length, absentDaysN, dayBreakdown, easyPlantDone, bbsDone, bonusScore, holidayBonusEarned, fullyAbsent: presentDays.length===0};
+      let walkthroughDone, meetingDone, warrantyDone;
+      if(hasPerfDataThisWeek){
+        walkthroughDone = perfRecordsThisWeek.some(p=>getProp(p,'Attending Walkthrough')==='Y');
+        meetingDone = perfRecordsThisWeek.some(p=>getProp(p,'Weekly Meeting')==='Y');
+        warrantyDone = perfRecordsThisWeek.some(p=>getProp(p,'Warranty Extension')==='Y');
+      } else {
+        walkthroughDone = presentDays.some(ds=>{
+          const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
+          return rep && (getProp(rep,'Walkthrough with LCS / OWR / PMC')===true || getProp(rep,'Walkthrough with Vendors')===true);
+        });
+        meetingDone = presentDays.some(ds=>{
+          const rep = supPages.find(p=>getProp(p,'Supervisor')===member && getProp(p,'Date')===ds);
+          return rep && getProp(rep,'Meetings / Braintrust Attendance')===true;
+        });
+        warrantyDone = false; // no Daily Reports equivalent — occasional field, only tracked in Performance Tracking
+      }
+      const bonusScore = (walkthroughDone?1:0) + (meetingDone?1:0) + (warrantyDone?1:0);
+
+      return {earned, possible, pct, presentDaysN: presentDays.length, absentDaysN, dayBreakdown, easyPlantDone, bbsDone, bonusScore, bonusSource: hasPerfDataThisWeek?'performance-tracking':'daily-reports-fallback', holidayBonusEarned, fullyAbsent: presentDays.length===0};
     }
     const weekScores = {};
     const workDayStrings = workDays.map(toStr);
@@ -802,7 +823,7 @@ async function load(){
         <div style="margin-top:4px">${scored.map(s=>`
           <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:.5px solid #F5F5F5;font-size:12px">
             <span style="color:${s.member===winner?.member?'#1A1A2E':'#888'};font-weight:${s.member===winner?.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
-            <span style="color:#888">${s.earned}/${s.possible} pts (${s.corePct}%) · Bonus ${s.bonusScore}/2</span>
+            <span style="color:#888">${s.earned}/${s.possible} pts (${s.corePct}%) · Bonus ${s.bonusScore}/3</span>
           </div>`).join('')}
         </div>`;
     } else if(!isSaturdayToday){
@@ -840,7 +861,7 @@ async function load(){
           <span style="font-size:36px">🦅</span>
           <div style="flex:1">
             <div style="font-size:16px;font-weight:500">${shortName}${absentNote}</div>
-            <div style="font-size:11px;color:#888;margin-top:2px">${winner.earned}/${winner.possible} pts (${winner.corePct}%) · Bonus ${winner.bonusScore}/2</div>
+            <div style="font-size:11px;color:#888;margin-top:2px">${winner.earned}/${winner.possible} pts (${winner.corePct}%) · Bonus ${winner.bonusScore}/3</div>
             ${tieNote}
           </div>
           <button onclick="confirmMedal('${winner.member}','Leader of the Week','${weekKey}',${winner.corePct},${winner.bonusScore},'${lastWeekStart}')"
@@ -852,7 +873,7 @@ async function load(){
         ${scored.map(s=>`
           <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:.5px solid #F5F5F5;font-size:12px">
             <span style="color:${s.member===winner.member?'#1A1A2E':'#888'};font-weight:${s.member===winner.member?'500':'400'}">${s.member.split('.')[1]?.trim()}</span>
-            <span style="color:#888">${s.fullyAbsent?'Absent all week (rotation/recovery)':`${s.earned}/${s.possible} pts (${s.corePct}%) · Bonus ${s.bonusScore}/2`}</span>
+            <span style="color:#888">${s.fullyAbsent?'Absent all week (rotation/recovery)':`${s.earned}/${s.possible} pts (${s.corePct}%) · Bonus ${s.bonusScore}/3`}</span>
           </div>`).join('')}`;
     }
 
